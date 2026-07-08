@@ -135,10 +135,10 @@ def run():
             print("Ошибка на этапе заполнения формы: " + str(e))
             safe_screenshot(page, "error_step3.png")
             browser.close()
-            return None
+                    return None
 
-             try:
-                 try:
+        try:
+            try:
                      page.keyboard.press("Escape")
                 page.wait_for_timeout(500)
             except:
