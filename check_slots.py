@@ -135,22 +135,20 @@ def run():
             print("Ошибка на этапе заполнения формы: " + str(e))
             safe_screenshot(page, "error_step3.png")
             browser.close()
-                    return None
+            return None
 
         try:
             try:
-                     page.keyboard.press("Escape")
+                page.keyboard.press("Escape")
                 page.wait_for_timeout(500)
             except:
                 pass
 
             try:
                 save = page.get_by_role("button", name="Mentés")
-
                 if save.count() > 0:
                     save.first.click(timeout=5000)
                     page.wait_for_timeout(1000)
-
             except:
                 pass
 
