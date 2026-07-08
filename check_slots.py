@@ -162,10 +162,33 @@ def check_calendar_for_slots(page):
     content = page.content().lower()
     markers = ["nincs szabad", "nincs elérhető", "no available"]
     has_slots = True
+    found_marker = None
     for m in markers:
         if m in content:
             has_slots = False
+            found_marker = m
+
+    print("Проверка календаря: has_slots=" + str(has_slots))
+    if found_marker:
+        print("Найден маркер отсутствия слотов: '" + found_marker + "'")
+        idx = content.find(found_marker)
+        snippet = content[max(0, idx - 100):idx + 150]
+        print("Контекст вокруг маркера: " + snippet)
+    else:
+        print("Ни один из маркеров отсутствия слотов не найден на странице")
+        print("Длина всего текста страницы: " + str(len(content)))
+
+    try:
+        body_text = page.locator("body").inner_text()
+        idx2 = body_text.lower().find("időpont")
+        if idx2 >= 0:
+            print("Текст рядом с 'időpont' на видимой странице: " + body_text[max(0, idx2 - 50):idx2 + 300])
+    except Exception as e:
+        print("Не удалось прочитать видимый текст body: " + str(e))
+
     return has_slots
+
+
 
 
 def run():
