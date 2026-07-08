@@ -201,7 +201,22 @@ def run():
         return has_slots
 if __name__ == "__main__":
     try:
-        notify("🧪 Тестовое сообщение из GitHub")
-    except Exception as e:
-        print("Ошибка отправки Telegram: " + str(e))
+        result = run()
 
+        if result is True:
+            notify(
+                "✅ Найден свободный слот!\n"
+                "https://konzinfoidopont.mfa.gov.hu/"
+            )
+        elif result is False:
+            notify(
+                "❌ Проверка выполнена.\n"
+                "Свободных слотов нет."
+            )
+        else:
+            notify(
+                "⚠️ Проверка завершилась с ошибкой."
+            )
+
+    except Exception as e:
+        notify("❌ Ошибка: " + str(e))
