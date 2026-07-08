@@ -117,6 +117,15 @@ def fill_form(page):
     count = inputs.count()
     print("Visible inputs: " + str(count))
 
+    secret_names = [
+        "VISA_NAME", "VISA_BIRTHDATE", "VISA_APPLICANTS_COUNT",
+        "VISA_PHONE", "VISA_EMAIL", "VISA_RESIDENCE_PERMIT",
+        "VISA_NATIONALITY", "VISA_PASSPORT", "VISA_RESIDENCE_COMMUNITY"
+    ]
+    for name in secret_names:
+        val = os.environ.get(name, "")
+        print(name + " задан: " + str(bool(val)) + ", длина: " + str(len(val)))
+
     values = [
         os.environ.get("VISA_NAME", ""),
         os.environ.get("VISA_BIRTHDATE", ""),
@@ -187,8 +196,6 @@ def check_calendar_for_slots(page):
         print("Не удалось прочитать видимый текст body: " + str(e))
 
     return has_slots
-
-
 
 
 def run():
