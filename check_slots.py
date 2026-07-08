@@ -43,9 +43,14 @@ def select_location_and_service(page):
 
 
 def fill_form(page):
-    inputs = page.locator("input:not([type=checkbox])")
+    page.wait_for_timeout(1000)
+
+    inputs = page.locator(
+        "input:visible:not([type=checkbox]):not([type=radio])"
+    )
+
     count = inputs.count()
-    print("Найдено полей ввода: " + str(count))
+    print("Visible inputs: " + str(count))
 
     values = [
         os.environ.get("VISA_NAME", ""),
@@ -60,22 +65,32 @@ def fill_form(page):
         os.environ.get("VISA_RESIDENCE_COMMUNITY", "")
     ]
 
-    for i in range(len(values)):
-        if i >= count:
-            break
-        val = values[i]
-        if val:
-            try:
-                inputs.nth(i).fill(val)
-            except Exception as e:
-                print("Не удалось заполнить поле номер " + str(i) + ": " + str(e))
+    value_index = 0
 
-    checkboxes = page.locator("input[type=checkbox]")
+    for i in range(count):
+        if value_index >= len(values):
+            break
+
+        value = values[value_index]
+
+        if not value:
+            value_index += 1
+            continue
+
+        try:
+            inputs.nth(i).fill(value)
+            value_index += 1
+        except Exception:
+            pass
+
+    checkboxes = page.locator("input[type=checkbox]:visible")
+
     for i in range(checkboxes.count()):
         try:
-            checkboxes.nth(i).check()
-        except Exception as e:
-            print("Не удалось отметить чекбокс номер " + str(i) + ": " + str(e))
+            if not checkboxes.nth(i).is_checked():
+                checkboxes.nth(i).check(force=True)
+        except Exception:
+            pass
 
 
 def check_calendar_for_slots(page):
@@ -123,31 +138,63 @@ def run():
             return None
 
         try:
-            buttons = page.locator("button")
-            print("Найдено кнопок: " + str(buttons.count()))
-            for i in range(buttons.count()):
-                try:
-                    print("Кнопка " + str(i) + ": " + buttons.nth(i).inner_text())
-                except Exception:
-                    pass
 
-            checkboxes_state = page.locator("input[type=checkbox]")
-            print("Чекбоксов всего: " + str(checkboxes_state.count()))
-            for i in range(checkboxes_state.count()):
-                try:
-                    print("Чекбокс " + str(i) + " отмечен: " + str(checkboxes_state.nth(i).is_checked()))
-                except Exception:
-                    pass
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+    except:
+        pass
 
-            page.get_by_role("button", name="Tovább", exact=False).first.click(timeout=15000)
-            page.wait_for_load_state("networkidle")
+    try:
+        save = page.get_by_role("button", name="Mentés")
+
+        if save.count() > 0:
+            save.first.click(timeout=5000)
             page.wait_for_timeout(1000)
-            safe_screenshot(page, "step4_calendar.png")
-        except Exception as e:
-            print("Ошибка на этапе перехода к календарю: " + str(e))
-            safe_screenshot(page, "error_step4.png")
-            browser.close()
-            return None
+
+    except:
+        pass
+
+    try:
+        page.locator("button.btn-close").first.click(timeout=3000)
+        page.wait_for_timeout(1000)
+    except:
+        pass
+
+    try:
+        page.locator("#modalCases").wait_for(
+            state="hidden",
+            timeout=10000
+        )
+    except:
+        pass
+
+    next_button = page.get_by_role(
+        "button",
+        name="Tovább az időpontválasztáshoz"
+    )
+
+    next_button.scroll_into_view_if_needed()
+
+    next_button.click(
+        force=True,
+        timeout=15000
+    )
+
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(2000)
+
+    safe_screenshot(page, "step4_calendar.png")
+
+except Exception as e:
+
+    print(str(e))
+
+    safe_screenshot(page, "error_step4.png")
+
+    browser.close()
+
+    return None
 
         has_slots = check_calendar_for_slots(page)
         browser.close()
