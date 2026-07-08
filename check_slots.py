@@ -192,10 +192,9 @@ def run():
         has_slots = check_calendar_for_slots(page)
         browser.close()
         return has_slots
-
-
 if __name__ == "__main__":
-    notify("🧪 Тестовое сообщение из GitHub")
-
+    try:
+        notify("🧪 Тестовое сообщение из GitHub")
     except Exception as e:
-        print("Общая ошибка: " + str(e))
+        print("Ошибка отправки Telegram: " + str(e))
+
