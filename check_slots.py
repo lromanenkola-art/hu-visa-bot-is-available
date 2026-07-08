@@ -1,3 +1,4 @@
+cat > /home/claude/check_slots.py << 'PYEOF'
 import os
 import requests
 from playwright.sync_api import sync_playwright
@@ -38,15 +39,39 @@ def select_location_and_service(page):
     page.wait_for_timeout(500)
 
 def fill_form(page):
-    page.get_by_label("Kérelmezők száma").fill(os.environ.get("VISA_APPLICANTS_COUNT", "1"))
-    page.get_by_label("Név").fill(os.environ["VISA_NAME"])
-    page.get_by_label("Születési idő").fill(os.environ["VISA_BIRTHDATE"])
-    page.get_by_label("Értesítési telefonszám").fill(os.environ["VISA_PHONE"])
-    page.get_by_label("E-mail cím").fill(os.environ["VISA_EMAIL"])
+    inputs = page.locator("input:not([type=checkbox])")
+    count = inputs.count()
+    print("Найдено полей ввода: " + str(count))
+
+    values = [
+        os.environ.get("VISA_NAME", ""),
+        os.environ.get("VISA_BIRTHDATE", ""),
+        os.environ.get("VISA_APPLICANTS_COUNT", "1"),
+        os.environ.get("VISA_PHONE", ""),
+        os.environ.get("VISA_EMAIL", ""),
+        os.environ.get("VISA_EMAIL", ""),
+        os.environ.get("VISA_RESIDENCE_PERMIT", ""),
+        os.environ.get("VISA_NATIONALITY", ""),
+        os.environ.get("VISA_PASSPORT", ""),
+        os.environ.get("VISA_RESIDENCE_COMMUNITY", "")
+    ]
+
+    for i in range(len(values)):
+        if i >= count:
+            break
+        val = values[i]
+        if val:
+            try:
+                inputs.nth(i).fill(val)
+            except Exception as e:
+                print("Не удалось заполнить поле номер " + str(i) + ": " + str(e))
 
     checkboxes = page.locator("input[type=checkbox]")
     for i in range(checkboxes.count()):
-        checkboxes.nth(i).check()
+        try:
+            checkboxes.nth(i).check()
+        except Exception as e:
+            print("Не удалось отметить чекбокс номер " + str(i) + ": " + str(e))
 
 def check_calendar_for_slots(page):
     content = page.content().lower()
@@ -117,3 +142,11 @@ if __name__ == "__main__":
             print("Проверка не дошла до конца - смотрите скриншоты error в артефактах.")
     except Exception as e:
         print("Общая ошибка: " + str(e))
+PYEOF
+python3 -c "
+import ast
+with open('/home/claude/check_slots.py', encoding='utf-8') as f:
+    src = f.read()
+ast.parse(src)
+print('Синтаксис корректен')
+"
