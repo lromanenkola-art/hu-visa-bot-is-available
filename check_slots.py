@@ -142,11 +142,5 @@ if __name__ == "__main__":
             print("Проверка не дошла до конца - смотрите скриншоты error в артефактах.")
     except Exception as e:
         print("Общая ошибка: " + str(e))
-PYEOF
-python3 -c "
-import ast
-with open('/home/claude/check_slots.py', encoding='utf-8') as f:
-    src = f.read()
-ast.parse(src)
-print('Синтаксис корректен')
-"
+PYEO
+
