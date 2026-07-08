@@ -137,8 +137,6 @@ def run():
             browser.close()
             return None
 
-        try:
-
     try:
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
