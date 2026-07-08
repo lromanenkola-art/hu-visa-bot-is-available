@@ -10,12 +10,33 @@ def notify(text):
         data={"chat_id": chat_id, "text": text}
     )
 
-def select_location_and_service(page):
-    page.get_by_text("Helyszín kiválasztása").click()
-    page.get_by_text("Szerbia - Szabadka, Főkonzulátus").click()
+def safe_screenshot(page, name):
+    try:
+        page.screenshot(path=name, full_page=True)
+    except Exception as e:
+        print(f"Не удалось сделать скриншот {name}: {e}")
 
-    page.get_by_text("Ügytípus hozzáadása").click()
-    page.get_by_text("Vízumkérelem (schengeni - C)").click()
+def dismiss_cookie_banner(page):
+    for text in ["Elfogadom", "Accept", "OK", "Rendben", "Egyetértek"]:
+        try:
+            btn = page.get_by_text(text, exact=False)
+            if btn.count() > 0:
+                btn.first.click(timeout=3000)
+                print(f"Закрыт баннер с текстом: {text}")
+                page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+def select_location_and_service(page):
+    page.get_by_text("Helyszín kiválasztása").click(timeout=10000)
+    page.wait_for_timeout(500)
+    page.get_by_text("Szerbia - Szabadka, Főkonzulátus").click(timeout=10000)
+    page.wait_for_timeout(500)
+
+    page.get_by_text("Ügytípus hozzáadása").click(timeout=10000)
+    page.wait_for_timeout(500)
+    page.get_by_text("Vízumkérelem (schengeni - C)").click(timeout=10000)
+    page.wait_for_timeout(500)
 
 def fill_form(page):
     page.get_by_label("Kérelmezők száma").fill(os.environ.get("VISA_APPLICANTS_COUNT", "1"))
@@ -40,41 +61,4 @@ def fill_form(page):
 
 def check_calendar_for_slots(page):
     content = page.content()
-    no_slots_markers = ["nincs szabad", "nincs elérhető", "no available"]
-    has_slots = not any(marker in content.lower() for marker in no_slots_markers)
-    return has_slots
-
-def run():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-
-        page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
-        page.wait_for_load_state("networkidle")
-        page.screenshot(path="step1_initial.png", full_page=True)
-
-        select_location_and_service(page)
-        page.screenshot(path="step2_after_selection.png", full_page=True)
-
-        fill_form(page)
-        page.screenshot(path="step3_after_fill.png", full_page=True)
-
-        page.get_by_role("button", name="Tovább az időpontválasztáshoz »").click()
-        page.wait_for_load_state("networkidle")
-        page.screenshot(path="step4_calendar.png", full_page=True)
-
-        has_slots = check_calendar_for_slots(page)
-
-        browser.close()
-        return has_slots
-
-if __name__ == "__main__":
-    try:
-        result = run()
-        if result:
-            notify("🎉 Похоже, появился свободный слот! Проверьте сайт: https://konzinfoidopont.mfa.gov.hu/")
-        else:
-            print("Слотов пока нет.")
-    except Exception as e:
-        print(f"Ошибка: {e}")
-        notify(f"⚠️ Бот столкнулся с ошибкой при проверке: {e}")
+    no_slots_markers = ["ninc
