@@ -2,8 +2,6 @@ import os
 import requests
 from playwright.sync_api import sync_playwright
 
-INTERVAL_MINUTES = 15  # задаётся в workflow через cron, тут просто справочно
-
 def notify(text):
     token = os.environ["TG_TOKEN"]
     chat_id = os.environ["TG_CHAT_ID"]
@@ -12,45 +10,37 @@ def notify(text):
         data={"chat_id": chat_id, "text": text}
     )
 
-def fill_form(page):
-    page.get_by_label("Фамилия, имя (латинскими буквами)").fill(os.environ["VISA_NAME"])
-    page.get_by_label("Дата рождения").fill(os.environ["VISA_BIRTHDATE"])
-    page.get_by_label("Номер телефона для уведомления").fill(os.environ["VISA_PHONE"])
-    page.get_by_label("Адрес эл.почты").fill(os.environ["VISA_EMAIL"])
-    page.get_by_label("Повторить адрес электронной почты").fill(os.environ["VISA_EMAIL"])
+def select_location_and_service(page):
+    page.get_by_text("Helyszín kiválasztása").click()
+    page.get_by_text("Szerbia - Szabadka, Főkonzulátus").click()
 
-    # Необязательные поля — заполняем, только если переменная задана
+    page.get_by_text("Ügytípus hozzáadása").click()
+    page.get_by_text("Vízumkérelem (schengeni - C)").click()
+
+def fill_form(page):
+    page.get_by_label("Kérelmezők száma").fill(os.environ.get("VISA_APPLICANTS_COUNT", "1"))
+    page.get_by_label("Név").fill(os.environ["VISA_NAME"])
+    page.get_by_label("Születési idő").fill(os.environ["VISA_BIRTHDATE"])
+    page.get_by_label("Értesítési telefonszám").fill(os.environ["VISA_PHONE"])
+    page.get_by_label("E-mail cím").fill(os.environ["VISA_EMAIL"])
+    page.get_by_label("E-mail cím újra").fill(os.environ["VISA_EMAIL"])
+
     if os.environ.get("VISA_RESIDENCE_PERMIT"):
-        page.get_by_label("Serbian residence permit number and validity").fill(os.environ["VISA_RESIDENCE_PERMIT"])
+        page.get_by_label("Szerb tartózkodási engedély száma, érvényessége").fill(os.environ["VISA_RESIDENCE_PERMIT"])
+
+    page.get_by_label("Állampolgárság").fill(os.environ["VISA_NATIONALITY"])
+    page.get_by_label("Útlevél száma").fill(os.environ["VISA_PASSPORT"])
+
     if os.environ.get("VISA_RESIDENCE_COMMUNITY"):
         page.get_by_label("Residential community in Serbia").fill(os.environ["VISA_RESIDENCE_COMMUNITY"])
 
-    page.get_by_label("Гражданство").fill(os.environ["VISA_NATIONALITY"])
-    page.get_by_label("Номер паспорта").fill(os.environ["VISA_PASSPORT"])
-
-    # Отметить оба чекбокса согласия
     checkboxes = page.locator("input[type=checkbox]")
     for i in range(checkboxes.count()):
         checkboxes.nth(i).check()
 
-def select_location_and_service(page):
-    # TODO: уточнить после первого прогона — как выглядит выпадающий список
-    #판단: вероятно это Blazor select или кастомный dropdown (не <select>)
-    # Пример для обычного select:
-    # page.select_option("select#location", label="Сербия - Субботица, Генеральное консульство")
-    # page.select_option("select#service", label="Visa application (Schengen visa- type 'C')")
-
-    # Если это кастомные dropdown-кнопки (судя по тёмно-синим полосам "Выбор места" на скринах):
-    page.get_by_text("Выбор места").click()
-    page.get_by_text("Сербия - Субботица, Генеральное консульство").click()
-
-    page.get_by_text("Добавление типа услуги").click()
-    page.get_by_text("Visa application (Schengen visa- type 'C')").click()
-
 def check_calendar_for_slots(page):
-    # TODO: уточнить реальный маркер "нет мест" после скриншота календаря
     content = page.content()
-    no_slots_markers = ["нет свободных", "нет доступных", "no available"]
+    no_slots_markers = ["nincs szabad", "nincs elérhető", "no available"]
     has_slots = not any(marker in content.lower() for marker in no_slots_markers)
     return has_slots
 
@@ -69,8 +59,7 @@ def run():
         fill_form(page)
         page.screenshot(path="step3_after_fill.png", full_page=True)
 
-        # Нажать "Далее" — TODO: уточнить точный текст кнопки
-        page.get_by_role("button", name="Далее").click()
+        page.get_by_role("button", name="Tovább az időpontválasztáshoz »").click()
         page.wait_for_load_state("networkidle")
         page.screenshot(path="step4_calendar.png", full_page=True)
 
