@@ -137,62 +137,59 @@ def run():
             browser.close()
             return None
 
-    try:
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(500)
-    except:
-        pass
+             try:
+                 try:
+                     page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+            except:
+                pass
 
-    try:
-        save = page.get_by_role("button", name="Mentés")
+            try:
+                save = page.get_by_role("button", name="Mentés")
 
-        if save.count() > 0:
-            save.first.click(timeout=5000)
-            page.wait_for_timeout(1000)
+                if save.count() > 0:
+                    save.first.click(timeout=5000)
+                    page.wait_for_timeout(1000)
 
-    except:
-        pass
+            except:
+                pass
 
-    try:
-        page.locator("button.btn-close").first.click(timeout=3000)
-        page.wait_for_timeout(1000)
-    except:
-        pass
+            try:
+                page.locator("button.btn-close").first.click(timeout=3000)
+                page.wait_for_timeout(1000)
+            except:
+                pass
 
-    try:
-        page.locator("#modalCases").wait_for(
-            state="hidden",
-            timeout=10000
-        )
-    except:
-        pass
+            try:
+                page.locator("#modalCases").wait_for(
+                    state="hidden",
+                    timeout=10000
+                )
+            except:
+                pass
 
-    next_button = page.get_by_role(
-        "button",
-        name="Tovább az időpontválasztáshoz"
-    )
+            next_button = page.get_by_role(
+                "button",
+                name="Tovább az időpontválasztáshoz"
+            )
 
-    next_button.scroll_into_view_if_needed()
+            next_button.scroll_into_view_if_needed()
 
-    next_button.click(
-        force=True,
-        timeout=15000
-    )
+            next_button.click(
+                force=True,
+                timeout=15000
+            )
 
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(2000)
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(2000)
 
-    safe_screenshot(page, "step4_calendar.png")
+            safe_screenshot(page, "step4_calendar.png")
 
-except Exception as e:
-
-    print(str(e))
-
-    safe_screenshot(page, "error_step4.png")
-
-    browser.close()
-
-    return None
+        except Exception as e:
+            print(str(e))
+            safe_screenshot(page, "error_step4.png")
+            browser.close()
+            return None
 
         has_slots = check_calendar_for_slots(page)
         browser.close()
