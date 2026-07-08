@@ -235,3 +235,38 @@ def run():
                 "button",
                 name="Tovább az időpontválasztáshoz"
             )
+
+            next_button.scroll_into_view_if_needed()
+
+            next_button.click(
+                force=True,
+                timeout=15000
+            )
+
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(2000)
+
+            safe_screenshot(page, "step4_calendar.png")
+
+        except Exception as e:
+            print(str(e))
+            safe_screenshot(page, "error_step4.png")
+            browser.close()
+            return None
+
+        has_slots = check_calendar_for_slots(page)
+        browser.close()
+        return has_slots
+if __name__ == "__main__":
+    try:
+        result = run()
+
+        if result is True:
+            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+        elif result is False:
+            notify("Proverka vypolnena. Svobodnykh slotov net.")
+        else:
+            notify("Proverka zavershilas s oshibkoi.")
+
+    except Exception as e:
+        notify("Oshibka: " + str(e))
