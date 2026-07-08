@@ -6,10 +6,17 @@ from playwright.sync_api import sync_playwright
 def notify(text):
     token = os.environ["TG_TOKEN"]
     chat_id = os.environ["TG_CHAT_ID"]
-    requests.post(
-        "https://api.telegram.org/bot" + token + "/sendMessage",
-        data={"chat_id": chat_id, "text": text}
+
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={
+            "chat_id": chat_id,
+            "text": text
+        }
     )
+
+    print("Telegram status:", response.status_code)
+    print("Telegram response:", response.text)
 
 
 def safe_screenshot(page, name):
