@@ -147,7 +147,7 @@ def fill_form(page):
 
         value = values[value_index]
 
-        if not value:           
+        if not value:
             value_index += 1
             continue
 
@@ -300,4 +300,3 @@ if __name__ == "__main__":
 
     except Exception as e:
         notify("Oshibka: " + str(e))
-
