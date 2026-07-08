@@ -142,5 +142,3 @@ if __name__ == "__main__":
             print("Проверка не дошла до конца - смотрите скриншоты error в артефактах.")
     except Exception as e:
         print("Общая ошибка: " + str(e))
-PYEO
-
