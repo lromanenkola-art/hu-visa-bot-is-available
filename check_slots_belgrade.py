@@ -87,14 +87,14 @@ def select_location_and_service(page):
         except Exception as e:
             print("Label " + str(i) + ": ошибка чтения " + str(e))
 
-    visa = page.locator("label:has-text('Vízumkérelem (schengeni - C)')")
-    print("Найдено label с точным текстом визы C: " + str(visa.count()))
+    visa = page.locator("label:has-text('schengeni')")
+    print("Найдено label со словом 'schengeni': " + str(visa.count()))
     if visa.count() > 0:
         visa.first.click(timeout=10000)
         page.wait_for_timeout(500)
-        print("Клик по Vízumkérelem (schengeni - C) выполнен")
+        print("Клик по visa (schengeni) выполнен")
     else:
-        print("Точный вариант не найден - нужна ручная проверка списка выше")
+        print("Вариант с 'schengeni' не найден - нужна ручная проверка списка выше")
 
     try:
         save = page.get_by_role("button", name="Mentés")
@@ -292,11 +292,11 @@ if __name__ == "__main__":
         result = run()
 
         if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            notify("[BELGRAD] Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
         elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
+            notify("[BELGRAD] Proverka vypolnena. Svobodnykh slotov net.")
         else:
-            notify("Proverka zavershilas s oshibkoi.")
+            notify("[BELGRAD] Proverka zavershilas s oshibkoi.")
 
     except Exception as e:
-        notify("Oshibka: " + str(e))
+        notify("[BELGRAD] Oshibka: " + str(e))
