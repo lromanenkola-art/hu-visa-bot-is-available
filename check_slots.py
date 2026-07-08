@@ -1,4 +1,3 @@
-cat > /home/claude/check_slots.py << 'PYEOF'
 import os
 import requests
 from playwright.sync_api import sync_playwright
