@@ -39,25 +39,59 @@ def dismiss_cookie_banner(page):
 
 
 def select_location_and_service(page):
-    page.locator("text=Helyszín kiválasztása").click(timeout=10000)
-    page.wait_for_selector("#modal2.show", timeout=10000)
-    page.wait_for_timeout(500)
-    page.locator("label:has-text('Szabadka')").click(timeout=10000)
-    page.wait_for_timeout(1000)
+    print("Шаг А: ищу кнопку Helyszin kivalasztasa")
+    btn = page.locator("text=Helyszín kiválasztása")
+    print("Найдено кнопок 'Helyszín kiválasztása': " + str(btn.count()))
+    btn.first.click(timeout=10000)
 
-    page.locator("text=Ügytípus hozzáadása").click(timeout=10000)
-    page.wait_for_selector("#modalCases.show", timeout=10000)
+    print("Шаг Б: жду появления модалки #modal2")
+    try:
+        page.wait_for_selector("#modal2.show", timeout=8000)
+        print("Модалка #modal2 открылась (класс .show найден)")
+    except Exception as e:
+        print("Модалка #modal2 НЕ открылась через .show: " + str(e))
+        modal_count = page.locator("#modal2").count()
+        print("Элементов #modal2 в DOM: " + str(modal_count))
+
     page.wait_for_timeout(500)
-    page.locator("label:has-text('rövid távú schengeni vízum')").click(timeout=10000)
+
+    print("Шаг В: ищу label с текстом Szabadka")
+    szabadka = page.locator("label:has-text('Szabadka')")
+    print("Найдено label с 'Szabadka': " + str(szabadka.count()))
+    szabadka.first.click(timeout=10000)
+    page.wait_for_timeout(1000)
+    print("Клик по Szabadka выполнен")
+
+    print("Шаг Г: ищу кнопку Ugytipus hozzaadasa")
+    btn2 = page.locator("text=Ügytípus hozzáadása")
+    print("Найдено кнопок 'Ügytípus hozzáadása': " + str(btn2.count()))
+    btn2.first.click(timeout=10000)
+
+    print("Шаг Д: жду появления модалки #modalCases")
+    try:
+        page.wait_for_selector("#modalCases.show", timeout=8000)
+        print("Модалка #modalCases открылась")
+    except Exception as e:
+        print("Модалка #modalCases НЕ открылась: " + str(e))
+
     page.wait_for_timeout(500)
+
+    print("Шаг Е: ищу label с visa типом")
+    visa = page.locator("label:has-text('rövid távú schengeni vízum')")
+    print("Найдено label с visa типом: " + str(visa.count()))
+    visa.first.click(timeout=10000)
+    page.wait_for_timeout(500)
+    print("Клик по visa типу выполнен")
 
     try:
         save = page.get_by_role("button", name="Mentés")
+        print("Найдено кнопок Mentés: " + str(save.count()))
         if save.count() > 0:
             save.first.click(timeout=5000)
             page.wait_for_timeout(1000)
-    except Exception:
-        pass
+            print("Клик по Mentés выполнен")
+    except Exception as e:
+        print("Ошибка при клике Mentés: " + str(e))
 
 
 def fill_form(page):
@@ -221,13 +255,4 @@ if __name__ == "__main__":
             )
         elif result is False:
             notify(
-                "❌ Проверка выполнена.\n"
-                "Свободных слотов нет."
-            )
-        else:
-            notify(
-                "⚠️ Проверка завершилась с ошибкой."
-            )
-
-    except Exception as e:
-        notify("❌ Ошибка: " + str(e))
+                "❌ Проверка выполнена.\
