@@ -66,4 +66,55 @@ def run():
         page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(2000)
-        safe_screenshot(page, "step
+        safe_screenshot(page, "step1_initial.png")
+
+        try:
+            dismiss_cookie_banner(page)
+            safe_screenshot(page, "step1b_after_cookies.png")
+        except Exception as e:
+            print("Ошибка на этапе cookies: " + str(e))
+
+        try:
+            select_location_and_service(page)
+            safe_screenshot(page, "step2_after_selection.png")
+        except Exception as e:
+            print("Ошибка на этапе выбора места/услуги: " + str(e))
+            safe_screenshot(page, "error_step2.png")
+            browser.close()
+            return None
+
+        try:
+            fill_form(page)
+            safe_screenshot(page, "step3_after_fill.png")
+        except Exception as e:
+            print("Ошибка на этапе заполнения формы: " + str(e))
+            safe_screenshot(page, "error_step3.png")
+            browser.close()
+            return None
+
+        try:
+            page.get_by_role("button", name="Tovabb az idopontvalasztashoz").click(timeout=10000)
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(1000)
+            safe_screenshot(page, "step4_calendar.png")
+        except Exception as e:
+            print("Ошибка на этапе перехода к календарю: " + str(e))
+            safe_screenshot(page, "error_step4.png")
+            browser.close()
+            return None
+
+        has_slots = check_calendar_for_slots(page)
+        browser.close()
+        return has_slots
+
+if __name__ == "__main__":
+    try:
+        result = run()
+        if result is True:
+            notify("Похоже, появился свободный слот! Проверьте сайт: https://konzinfoidopont.mfa.gov.hu/")
+        elif result is False:
+            print("Слотов пока нет.")
+        else:
+            print("Проверка не дошла до конца - смотрите скриншоты error в артефактах.")
+    except Exception as e:
+        print("Общая ошибка: " + str(e))
