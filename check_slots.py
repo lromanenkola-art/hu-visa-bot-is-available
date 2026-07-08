@@ -197,11 +197,24 @@ def run():
 if __name__ == "__main__":
     try:
         result = run()
+
         if result is True:
-    notify("✅ Найден свободный слот!\nhttps://konzinfoidopont.mfa.gov.hu/")
-elif result is False:
-    notify("❌ Проверка выполнена. Свободных слотов нет.")
-else:
-    notify("⚠️ Проверка завершилась с ошибкой. Проверьте GitHub Actions.")
+            notify(
+                "✅ Найден свободный слот!\n"
+                "https://konzinfoidopont.mfa.gov.hu/"
+            )
+
+        elif result is False:
+            notify(
+                "❌ Проверка выполнена.\n"
+                "Свободных слотов нет."
+            )
+
+        else:
+            notify(
+                "⚠️ Проверка завершилась с ошибкой.\n"
+                "Проверьте GitHub Actions."
+            )
+
     except Exception as e:
         print("Общая ошибка: " + str(e))
