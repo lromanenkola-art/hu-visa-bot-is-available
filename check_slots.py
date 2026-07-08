@@ -2,6 +2,7 @@ import os
 import requests
 from playwright.sync_api import sync_playwright
 
+
 def notify(text):
     token = os.environ["TG_TOKEN"]
     chat_id = os.environ["TG_CHAT_ID"]
@@ -10,11 +11,13 @@ def notify(text):
         data={"chat_id": chat_id, "text": text}
     )
 
+
 def safe_screenshot(page, name):
     try:
         page.screenshot(path=name, full_page=True)
     except Exception as e:
         print("Не удалось сделать скриншот " + name + ": " + str(e))
+
 
 def dismiss_cookie_banner(page):
     labels = ["Elfogadom", "Accept", "OK", "Rendben"]
@@ -27,6 +30,7 @@ def dismiss_cookie_banner(page):
         except Exception:
             pass
 
+
 def select_location_and_service(page):
     page.locator("text=Helyszín kiválasztása").click(timeout=10000)
     page.wait_for_timeout(500)
@@ -36,6 +40,7 @@ def select_location_and_service(page):
     page.wait_for_timeout(500)
     page.locator("text=Vízumkérelem").first.click(timeout=10000)
     page.wait_for_timeout(500)
+
 
 def fill_form(page):
     inputs = page.locator("input:not([type=checkbox])")
@@ -72,6 +77,7 @@ def fill_form(page):
         except Exception as e:
             print("Не удалось отметить чекбокс номер " + str(i) + ": " + str(e))
 
+
 def check_calendar_for_slots(page):
     content = page.content().lower()
     markers = ["nincs szabad", "nincs elérhető", "no available"]
@@ -80,6 +86,7 @@ def check_calendar_for_slots(page):
         if m in content:
             has_slots = False
     return has_slots
+
 
 def run():
     with sync_playwright() as p:
@@ -116,7 +123,23 @@ def run():
             return None
 
         try:
-            page.locator("text=Tovább").first.click(timeout=10000)
+            buttons = page.locator("button")
+            print("Найдено кнопок: " + str(buttons.count()))
+            for i in range(buttons.count()):
+                try:
+                    print("Кнопка " + str(i) + ": " + buttons.nth(i).inner_text())
+                except Exception:
+                    pass
+
+            checkboxes_state = page.locator("input[type=checkbox]")
+            print("Чекбоксов всего: " + str(checkboxes_state.count()))
+            for i in range(checkboxes_state.count()):
+                try:
+                    print("Чекбокс " + str(i) + " отмечен: " + str(checkboxes_state.nth(i).is_checked()))
+                except Exception:
+                    pass
+
+            page.get_by_role("button", name="Tovább", exact=False).first.click(timeout=15000)
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(1000)
             safe_screenshot(page, "step4_calendar.png")
@@ -129,6 +152,7 @@ def run():
         has_slots = check_calendar_for_slots(page)
         browser.close()
         return has_slots
+
 
 if __name__ == "__main__":
     try:
