@@ -8,21 +8,27 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - run: pip install -r requirements.txt
+
       - run: playwright install --with-deps chromium
+
       - run: python check_slots.py
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-            - uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-  name: debug-screenshots
-  path: |
-    *.png
-    *.html
+          name: debug-screenshots
+          path: |
+            *.png
+            *.html
