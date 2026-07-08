@@ -147,7 +147,8 @@ def fill_form(page):
 
         value = values[value_index]
 
-        if not value:            value_index += 1
+        if not value:           
+            value_index += 1
             continue
 
         try:
