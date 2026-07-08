@@ -87,14 +87,14 @@ def select_location_and_service(page):
         except Exception as e:
             print("Label " + str(i) + ": ошибка чтения " + str(e))
 
-    visa = page.locator("label:has-text('vízum')")
-    print("Найдено label с 'vízum': " + str(visa.count()))
+    visa = page.locator("label:has-text('Vízumkérelem (schengeni - C)')")
+    print("Найдено label с точным текстом визы C: " + str(visa.count()))
     if visa.count() > 0:
         visa.first.click(timeout=10000)
         page.wait_for_timeout(500)
-        print("Клик по visa типу выполнен (первый вариант с vízum)")
+        print("Клик по Vízumkérelem (schengeni - C) выполнен")
     else:
-        print("Ни один label не содержит 'vízum' - нужна ручная проверка списка выше")
+        print("Точный вариант не найден - нужна ручная проверка списка выше")
 
     try:
         save = page.get_by_role("button", name="Mentés")
@@ -174,99 +174,4 @@ def run():
         page = browser.new_page()
 
         page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(2000)
-        safe_screenshot(page, "step1_initial.png")
-
-        try:
-            dismiss_cookie_banner(page)
-            safe_screenshot(page, "step1b_after_cookies.png")
-        except Exception as e:
-            print("Ошибка на этапе cookies: " + str(e))
-
-        try:
-            select_location_and_service(page)
-            safe_screenshot(page, "step2_after_selection.png")
-        except Exception as e:
-            print("Ошибка на этапе выбора места/услуги: " + str(e))
-            safe_screenshot(page, "error_step2.png")
-            browser.close()
-            return None
-
-        try:
-            fill_form(page)
-            safe_screenshot(page, "step3_after_fill.png")
-        except Exception as e:
-            print("Ошибка на этапе заполнения формы: " + str(e))
-            safe_screenshot(page, "error_step3.png")
-            browser.close()
-            return None
-
-        try:
-            try:
-                page.keyboard.press("Escape")
-                page.wait_for_timeout(500)
-            except:
-                pass
-
-            try:
-                save = page.get_by_role("button", name="Mentés")
-                if save.count() > 0:
-                    save.first.click(timeout=5000)
-                    page.wait_for_timeout(1000)
-            except:
-                pass
-
-            try:
-                page.locator("button.btn-close").first.click(timeout=3000)
-                page.wait_for_timeout(1000)
-            except:
-                pass
-
-            try:
-                page.locator("#modalCases").wait_for(
-                    state="hidden",
-                    timeout=10000
-                )
-            except:
-                pass
-
-            next_button = page.get_by_role(
-                "button",
-                name="Tovább az időpontválasztáshoz"
-            )
-
-            next_button.scroll_into_view_if_needed()
-
-            next_button.click(
-                force=True,
-                timeout=15000
-            )
-
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(2000)
-
-            safe_screenshot(page, "step4_calendar.png")
-
-        except Exception as e:
-            print(str(e))
-            safe_screenshot(page, "error_step4.png")
-            browser.close()
-            return None
-
-        has_slots = check_calendar_for_slots(page)
-        browser.close()
-        return has_slots
-if __name__ == "__main__":
-    try:
-        result = run()
-
-        if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
-        elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
-        else:
-            notify("Proverka zavershilas s oshibkoi.")
-
-    except Exception as e:
-        notify("Oshibka: " + str(e))
+        
