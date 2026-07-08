@@ -39,14 +39,25 @@ def dismiss_cookie_banner(page):
 
 
 def select_location_and_service(page):
-    page.wait_for_timeout(3000)
+    page.locator("text=Helyszín kiválasztása").click(timeout=10000)
+    page.wait_for_selector("#modal2.show", timeout=10000)
+    page.wait_for_timeout(500)
+    page.locator("label:has-text('Szabadka')").click(timeout=10000)
+    page.wait_for_timeout(1000)
 
-    with open("page.html", "w", encoding="utf-8") as f:
-        f.write(page.content())
+    page.locator("text=Ügytípus hozzáadása").click(timeout=10000)
+    page.wait_for_selector("#modalCases.show", timeout=10000)
+    page.wait_for_timeout(500)
+    page.locator("label:has-text('rövid távú schengeni vízum')").click(timeout=10000)
+    page.wait_for_timeout(500)
 
-    safe_screenshot(page, "page_before_selection.png")
-
-    raise Exception("HTML saved")
+    try:
+        save = page.get_by_role("button", name="Mentés")
+        if save.count() > 0:
+            save.first.click(timeout=5000)
+            page.wait_for_timeout(1000)
+    except Exception:
+        pass
 
 
 def fill_form(page):
