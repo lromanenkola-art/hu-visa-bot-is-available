@@ -17,44 +17,43 @@ def safe_screenshot(page, name):
         print("Не удалось сделать скриншот " + name + ": " + str(e))
 
 def dismiss_cookie_banner(page):
-    labels = ["Elfogadom", "Accept", "OK", "Rendben", "Egyetertek"]
+    labels = ["Elfogadom", "Accept", "OK", "Rendben"]
     for text in labels:
         try:
             btn = page.get_by_text(text, exact=False)
             if btn.count() > 0:
                 btn.first.click(timeout=3000)
-                print("Закрыт баннер: " + text)
                 page.wait_for_timeout(1000)
         except Exception:
             pass
 
 def select_location_and_service(page):
-    page.get_by_text("Helyszin kivalasztasa").click(timeout=10000)
+    page.locator("text=Helyszín kiválasztása").click(timeout=10000)
     page.wait_for_timeout(500)
-    page.get_by_text("Szerbia").click(timeout=10000)
+    page.locator("text=Szerbia").first.click(timeout=10000)
     page.wait_for_timeout(500)
-    page.get_by_text("Ugytipus hozzaadasa").click(timeout=10000)
+    page.locator("text=Ügytípus hozzáadása").click(timeout=10000)
     page.wait_for_timeout(500)
-    page.get_by_text("Vizumkerelem").click(timeout=10000)
+    page.locator("text=Vízumkérelem").first.click(timeout=10000)
     page.wait_for_timeout(500)
 
 def fill_form(page):
-    page.get_by_label("Kerelmezok szama").fill(os.environ.get("VISA_APPLICANTS_COUNT", "1"))
-    page.get_by_label("Nev").fill(os.environ["VISA_NAME"])
-    page.get_by_label("Szuletesi ido").fill(os.environ["VISA_BIRTHDATE"])
-    page.get_by_label("Ertesitesi telefonszam").fill(os.environ["VISA_PHONE"])
-    page.get_by_label("E-mail cim").fill(os.environ["VISA_EMAIL"])
+    page.get_by_label("Kérelmezők száma").fill(os.environ.get("VISA_APPLICANTS_COUNT", "1"))
+    page.get_by_label("Név").fill(os.environ["VISA_NAME"])
+    page.get_by_label("Születési idő").fill(os.environ["VISA_BIRTHDATE"])
+    page.get_by_label("Értesítési telefonszám").fill(os.environ["VISA_PHONE"])
+    page.get_by_label("E-mail cím").fill(os.environ["VISA_EMAIL"])
 
     checkboxes = page.locator("input[type=checkbox]")
     for i in range(checkboxes.count()):
         checkboxes.nth(i).check()
 
 def check_calendar_for_slots(page):
-    content = page.content()
-    markers = ["nincs szabad", "nincs elerheto", "no available"]
+    content = page.content().lower()
+    markers = ["nincs szabad", "nincs elérhető", "no available"]
     has_slots = True
     for m in markers:
-        if m in content.lower():
+        if m in content:
             has_slots = False
     return has_slots
 
@@ -93,7 +92,7 @@ def run():
             return None
 
         try:
-            page.get_by_role("button", name="Tovabb az idopontvalasztashoz").click(timeout=10000)
+            page.locator("text=Tovább").first.click(timeout=10000)
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(1000)
             safe_screenshot(page, "step4_calendar.png")
