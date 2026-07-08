@@ -24,6 +24,15 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          VISA_NAME: ${{ secrets.VISA_NAME }}
+          VISA_BIRTHDATE: ${{ secrets.VISA_BIRTHDATE }}
+          VISA_APPLICANTS_COUNT: ${{ secrets.VISA_APPLICANTS_COUNT }}
+          VISA_PHONE: ${{ secrets.VISA_PHONE }}
+          VISA_EMAIL: ${{ secrets.VISA_EMAIL }}
+          VISA_RESIDENCE_PERMIT: ${{ secrets.VISA_RESIDENCE_PERMIT }}
+          VISA_NATIONALITY: ${{ secrets.VISA_NATIONALITY }}
+          VISA_PASSPORT: ${{ secrets.VISA_PASSPORT }}
+          VISA_RESIDENCE_COMMUNITY: ${{ secrets.VISA_RESIDENCE_COMMUNITY }}
 
       - uses: actions/upload-artifact@v4
         if: always()
