@@ -76,12 +76,25 @@ def select_location_and_service(page):
 
     page.wait_for_timeout(500)
 
-    print("Шаг Е: ищу label с visa типом")
-    visa = page.locator("label:has-text('rövid távú schengeni vízum')")
-    print("Найдено label с visa типом: " + str(visa.count()))
-    visa.first.click(timeout=10000)
-    page.wait_for_timeout(500)
-    print("Клик по visa типу выполнен")
+    print("Шаг Е: вывожу все label внутри modalCases")
+    modal_labels = page.locator("#modalCases label")
+    label_count = modal_labels.count()
+    print("Всего label в modalCases: " + str(label_count))
+    for i in range(min(label_count, 60)):
+        try:
+            txt = modal_labels.nth(i).inner_text()
+            print("Label " + str(i) + ": [" + txt + "]")
+        except Exception as e:
+            print("Label " + str(i) + ": ошибка чтения " + str(e))
+
+    visa = page.locator("label:has-text('vízum')")
+    print("Найдено label с 'vízum': " + str(visa.count()))
+    if visa.count() > 0:
+        visa.first.click(timeout=10000)
+        page.wait_for_timeout(500)
+        print("Клик по visa типу выполнен (первый вариант с vízum)")
+    else:
+        print("Ни один label не содержит 'vízum' - нужна ручная проверка списка выше")
 
     try:
         save = page.get_by_role("button", name="Mentés")
@@ -222,38 +235,3 @@ def run():
                 "button",
                 name="Tovább az időpontválasztáshoz"
             )
-
-            next_button.scroll_into_view_if_needed()
-
-            next_button.click(
-                force=True,
-                timeout=15000
-            )
-
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(2000)
-
-            safe_screenshot(page, "step4_calendar.png")
-
-        except Exception as e:
-            print(str(e))
-            safe_screenshot(page, "error_step4.png")
-            browser.close()
-            return None
-
-        has_slots = check_calendar_for_slots(page)
-        browser.close()
-        return has_slots
-if __name__ == "__main__":
-    try:
-        result = run()
-
-        if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
-        elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
-        else:
-            notify("Proverka zavershilas s oshibkoi.")
-
-    except Exception as e:
-        notify("Oshibka: " + str(e))
