@@ -39,14 +39,14 @@ def dismiss_cookie_banner(page):
 
 
 def select_location_and_service(page):
-    page.locator("text=Helyszín kiválasztása").click(timeout=10000)
-    page.wait_for_timeout(500)
-    page.locator("text=Szerbia").first.click(timeout=10000)
-    page.wait_for_timeout(500)
-    page.locator("text=Ügytípus hozzáadása").click(timeout=10000)
-    page.wait_for_timeout(500)
-    page.locator("text=Vízumkérelem").first.click(timeout=10000)
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(3000)
+
+    with open("page.html", "w", encoding="utf-8") as f:
+        f.write(page.content())
+
+    safe_screenshot(page, "page_before_selection.png")
+
+    raise Exception("HTML saved")
 
 
 def fill_form(page):
