@@ -292,11 +292,11 @@ if __name__ == "__main__":
         result = run()
 
         if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            notify("‼️‼️ СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/")
         elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
+            notify("Нет")
         else:
-            notify("Proverka zavershilas s oshibkoi.")
+            notify("⚠️ Ошибка проверки")
 
     except Exception as e:
-        notify("Oshibka: " + str(e))
+        notify("⚠️ Ошибка: " + str(e))
