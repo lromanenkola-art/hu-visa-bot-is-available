@@ -292,11 +292,11 @@ if __name__ == "__main__":
         result = run()
 
         if result is True:
-            notify("[BELGRAD] Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            notify("‼️‼️ БЕЛГРАД: СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/")
         elif result is False:
-            notify("[BELGRAD] Proverka vypolnena. Svobodnykh slotov net.")
+            notify("Белград: нет")
         else:
-            notify("[BELGRAD] Proverka zavershilas s oshibkoi.")
+            notify("⚠️ Белград: ошибка проверки")
 
     except Exception as e:
-        notify("[BELGRAD] Oshibka: " + str(e))
+        notify("⚠️ Белград: ошибка - " + str(e))
