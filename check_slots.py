@@ -275,7 +275,8 @@ def check_no_slots_popup(page):
 def check_real_calendar_reached(page):
     """
     Проверяет, попали ли мы на реальную страницу выбора даты
-    (это отдельный виджет на английском языке: "Select a date", "Time period").
+    (это отдельный виджет: "Select a date", "Time period",
+    либо индикатор шагов "Időpontválasztás" стал активным шагом).
     """
     try:
         if page.get_by_text("Select a date", exact=False).count() > 0:
@@ -285,6 +286,32 @@ def check_real_calendar_reached(page):
     except Exception as e:
         print("Ошибка при проверке признаков реального календаря: " + str(e))
     return False
+
+
+def wait_for_real_outcome(page, timeout_ms=12000):
+    """
+    КРИТИЧЕСКИ ВАЖНО: после клика по кнопке перехода сайт делает
+    проверку слотов асинхронно (AJAX), результат появляется не мгновенно.
+    Если проверить состояние сразу - попап "нет мест" ещё может быть не
+    показан, из-за чего скрипт ошибочно решит "раз попапа нет - слоты есть".
+
+    Эта функция ждёт (с опросом каждые 500мс, до timeout_ms), пока не
+    произойдёт один из ДВУХ позитивных, подтверждённых исходов:
+      - "no_slots"  -> появился попап с #nocase / текстом "нет мест"
+      - "calendar"  -> реально открылся календарь (шаг 2)
+    Если за отведённое время ничего из этого не произошло - "timeout".
+    Возвращать "слоты есть" без реального подтверждения календаря нельзя.
+    """
+    waited = 0
+    step_ms = 500
+    while waited <= timeout_ms:
+        if check_no_slots_popup(page):
+            return "no_slots"
+        if check_real_calendar_reached(page):
+            return "calendar"
+        page.wait_for_timeout(step_ms)
+        waited += step_ms
+    return "timeout"
 
 
 def check_calendar_has_free_slots(page):
@@ -430,29 +457,33 @@ def run():
             return None, []
 
         # --- Определяем реальный исход ---
+        # ВАЖНО: не решаем мгновенно. Ждём, пока не появится ОДИН из
+        # подтверждённых исходов (попап "нет мест" или реальный календарь).
+        outcome = wait_for_real_outcome(page, timeout_ms=12000)
+        print("Итог ожидания результата: " + outcome)
 
-        # 1) Явная, подтверждённая сайтом модалка "нет мест"
-        if check_no_slots_popup(page):
+        if outcome == "no_slots":
             safe_screenshot(page, "step5_no_slots_popup.png")
             browser.close()
             return False, []
 
-        # 2) Фразы "нет мест" не видно. Прежде чем радостно сообщать "слоты есть",
-        #    подстраховываемся: если форма не прошла валидацию (мы застряли
-        #    на шаге 1 с ошибками) - сайт мог просто не успеть выполнить
-        #    реальную проверку слотов. В этом случае НЕ считаем, что слоты есть.
-        reasons = collect_validation_errors(page)
-        if reasons:
-            print("Фраза 'нет мест' не найдена, но обнаружены ошибки валидации формы: " + " | ".join(reasons))
-            safe_screenshot(page, "step5_unverified.png")
+        if outcome == "calendar":
+            safe_screenshot(page, "step5_calendar_reached.png")
+            print("Реальный переход на шаг 2 (календарь) подтверждён - считаем, что слоты ЕСТЬ")
             browser.close()
-            return "unverified", reasons
+            return True, []
 
-        # 3) Ни модалки "нет мест", ни ошибок валидации - считаем, что слоты есть
-        print("Фраза 'нет мест' не найдена, ошибок валидации нет - считаем, что слоты ЕСТЬ")
-        safe_screenshot(page, "step5_slots_available.png")
+        # outcome == "timeout": ни попап, ни календарь не появились за отведённое время
+        reasons = collect_validation_errors(page)
+        if not reasons:
+            reasons.append(
+                "Истёк таймаут ожидания: не появился ни индикатор 'нет мест', "
+                "ни признаки реального календаря"
+            )
+        print("Не удалось подтвердить исход: " + " | ".join(reasons))
+        safe_screenshot(page, "step5_unverified.png")
         browser.close()
-        return True, []
+        return "unverified", reasons
 
 
 if __name__ == "__main__":
