@@ -8,20 +8,47 @@ class StepFailedError(Exception):
     pass
 
 
-def notify(text):
+def notify(text, photo_path=None, silent=False):
     token = os.environ["TG_TOKEN"]
     chat_id = os.environ["TG_CHAT_ID"]
+
+    if photo_path and os.path.exists(photo_path):
+        try:
+            with open(photo_path, "rb") as f:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{token}/sendPhoto",
+                    data={
+                        "chat_id": chat_id,
+                        "caption": text,
+                        "disable_notification": "true" if silent else "false"
+                    },
+                    files={"photo": f}
+                )
+            print("Telegram (photo) status:", response.status_code)
+            print("Telegram (photo) response:", response.text)
+            return
+        except Exception as e:
+            print("Не удалось отправить фото, отправляю обычным сообщением: " + str(e))
 
     response = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data={
             "chat_id": chat_id,
-            "text": text
+            "text": text,
+            "disable_notification": "true" if silent else "false"
         }
     )
 
     print("Telegram status:", response.status_code)
     print("Telegram response:", response.text)
+
+
+def find_existing_screenshot(candidates):
+    """Возвращает первый существующий файл из списка кандидатов, либо None."""
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
 
 
 def safe_screenshot(page, name):
@@ -480,14 +507,32 @@ if __name__ == "__main__":
         result, reasons = run()
 
         if result is True:
-            notify("BEOGRAD: Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            photo = find_existing_screenshot(["step5_calendar_reached.png", "step4_calendar.png"])
+            notify(
+                "BEOGRAD: Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/",
+                photo_path=photo,
+                silent=False
+            )
         elif result is False:
-            notify("BEOGRAD: slotov net.")
+            photo = find_existing_screenshot([
+                "step5_red_nocase_message.png",
+                "step5_red_nocase_message_fallback.png"
+            ])
+            notify(
+                "BEOGRAD: slotov net.",
+                photo_path=photo,
+                silent=True  # тихое уведомление - не дёргает телефон
+            )
         else:
             msg = "⚠️ BEOGRAD: Oshibka proverki: ne udalos' proiti vse shagi do kontsa."
             if reasons:
                 msg += " Prichina: " + "; ".join(reasons[:3])
-            notify(msg)
+            photo = find_existing_screenshot([
+                "error_step_failed.png",
+                "error_unexpected.png",
+                "step5_unverified.png"
+            ])
+            notify(msg, photo_path=photo, silent=False)
 
     except Exception as e:
         notify("BEOGRAD: Oshibka - " + str(e))
