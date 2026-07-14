@@ -107,15 +107,68 @@ def select_location_and_service(page):
         print("Ошибка при клике Mentés: " + str(e))
 
 
+def xpath_literal(s):
+    """Безопасно оборачивает строку для использования в XPath, даже если в ней есть кавычки."""
+    if "'" not in s:
+        return "'" + s + "'"
+    if '"' not in s:
+        return '"' + s + '"'
+    parts = s.split("'")
+    return "concat('" + "', \"'\", '".join(parts) + "')"
+
+
+def fill_field_by_label(page, label_text, value):
+    """
+    Заполняет поле, находя его по подписи (label), а НЕ по порядковому номеру.
+    Это устойчиво к любым сдвигам разметки, из-за которых значения
+    могли "разъезжаться" по чужим полям.
+    """
+    if not value:
+        return False
+
+    # Стратегия 1: стандартная связка <label for="..."> с полем
+    try:
+        field = page.get_by_label(label_text, exact=True)
+        if field.count() > 0:
+            field.first.fill(value)
+            print("Заполнено поле '" + label_text + "' (стандартная привязка label)")
+            return True
+    except Exception:
+        pass
+
+    # Стратегия 2: ищем элемент с точным текстом label, затем ближайший
+    # видимый input в общем родительском контейнере (на 1 или 2 уровня выше)
+    try:
+        lit = xpath_literal(label_text)
+        label_loc = page.locator(
+            "xpath=//*[self::label or self::div or self::span][normalize-space(text())=" + lit + "]"
+        )
+        found_count = label_loc.count()
+        if found_count > 0:
+            for level in [1, 2, 3]:
+                try:
+                    row = label_loc.first.locator(
+                        "xpath=ancestor::div[" + str(level) + "]"
+                    )
+                    input_in_row = row.locator("input:visible")
+                    if input_in_row.count() > 0:
+                        input_in_row.first.fill(value)
+                        print(
+                            "Заполнено поле '" + label_text
+                            + "' (найдено рядом с label, уровень контейнера " + str(level) + ")"
+                        )
+                        return True
+                except Exception:
+                    continue
+    except Exception as e:
+        print("Ошибка при поиске поля по label '" + label_text + "': " + str(e))
+
+    print("НЕ удалось найти поле для label '" + label_text + "' - значение НЕ записано")
+    return False
+
+
 def fill_form(page):
     page.wait_for_timeout(1000)
-
-    inputs = page.locator(
-        "input:visible:not([type=checkbox]):not([type=radio])"
-    )
-
-    count = inputs.count()
-    print("Visible inputs: " + str(count))
 
     secret_names = [
         "VISA_NAME", "VISA_BIRTHDATE", "VISA_APPLICANTS_COUNT",
@@ -126,39 +179,34 @@ def fill_form(page):
         val = os.environ.get(name, "")
         print(name + " задан: " + str(bool(val)) + ", длина: " + str(len(val)))
 
-    values = [
-        os.environ.get("VISA_NAME", ""),
-        os.environ.get("VISA_BIRTHDATE", ""),
-        os.environ.get("VISA_APPLICANTS_COUNT", "1"),
-        os.environ.get("VISA_PHONE", ""),
-        os.environ.get("VISA_EMAIL", ""),
-        os.environ.get("VISA_EMAIL", ""),
-        os.environ.get("VISA_RESIDENCE_PERMIT", ""),
-        os.environ.get("VISA_NATIONALITY", ""),
-        os.environ.get("VISA_PASSPORT", ""),
-        os.environ.get("VISA_RESIDENCE_COMMUNITY", "")
+    email = os.environ.get("VISA_EMAIL", "")
+
+    # Точные подписи полей, как они видны на форме (важен порядок для лога, не для заполнения)
+    label_value_pairs = [
+        ("Név", os.environ.get("VISA_NAME", "")),
+        ("Születési idő", os.environ.get("VISA_BIRTHDATE", "")),
+        ("Kérelmezők száma", os.environ.get("VISA_APPLICANTS_COUNT", "1")),
+        ("Értesítési telefonszám", os.environ.get("VISA_PHONE", "")),
+        ("E-mail cím", email),
+        ("E-mail cím újra", email),
+        ("Szerb tartózkodási engedély száma, érvényessége", os.environ.get("VISA_RESIDENCE_PERMIT", "")),
+        ("Állampolgárság", os.environ.get("VISA_NATIONALITY", "")),
+        ("Útlevél száma", os.environ.get("VISA_PASSPORT", "")),
+        ("Residential community in Serbia", os.environ.get("VISA_RESIDENCE_COMMUNITY", "")),
     ]
 
-    value_index = 0
+    results = {}
+    for label_text, value in label_value_pairs:
+        ok = fill_field_by_label(page, label_text, value)
+        results[label_text] = ok
 
-    for i in range(count):
-        if value_index >= len(values):
-            break
-
-        value = values[value_index]
-
-        if not value:
-            value_index += 1
-            continue
-
-        try:
-            inputs.nth(i).fill(value)
-            value_index += 1
-        except Exception:
-            pass
+    not_filled = [lbl for lbl, ok in results.items() if not ok]
+    if not_filled:
+        print("ВНИМАНИЕ: не удалось заполнить поля: " + ", ".join(not_filled))
+    else:
+        print("Все поля с непустыми значениями успешно найдены и заполнены по label")
 
     checkboxes = page.locator("input[type=checkbox]:visible")
-
     for i in range(checkboxes.count()):
         try:
             if not checkboxes.nth(i).is_checked():
@@ -167,38 +215,103 @@ def fill_form(page):
             pass
 
 
-def check_calendar_for_slots(page):
-    content = page.content().lower()
-    markers = ["nincs szabad", "nincs elérhető", "no available"]
-    has_slots = True
-    found_marker = None
-    for m in markers:
-        if m in content:
-            has_slots = False
-            found_marker = m
-
-    print("Проверка календаря: has_slots=" + str(has_slots))
-    if found_marker:
-        print("Найден маркер отсутствия слотов: '" + found_marker + "'")
-        idx = content.find(found_marker)
-        snippet = content[max(0, idx - 100):idx + 150]
-        print("Контекст вокруг маркера: " + snippet)
-    else:
-        print("Ни один из маркеров отсутствия слотов не найден на странице")
-        print("Длина всего текста страницы: " + str(len(content)))
-
+def check_no_slots_popup(page):
+    """
+    Проверяет реальное, подтверждённое сайтом модальное окно об отсутствии
+    свободных мест (текст "nincs szabad időpont", видимый пользователю,
+    во всплывающем окне поверх формы). Если оно есть - закрывает его
+    и возвращает True.
+    """
     try:
-        body_text = page.locator("body").inner_text()
-        idx2 = body_text.lower().find("időpont")
-        if idx2 >= 0:
-            print("Текст рядом с 'időpont' на видимой странице: " + body_text[max(0, idx2 - 50):idx2 + 300])
+        popup = page.get_by_text("nincs szabad időpont", exact=False)
+        if popup.count() > 0 and popup.first.is_visible():
+            print("Обнаружено модальное окно с текстом об отсутствии свободных мест")
+            try:
+                ok_btn = page.get_by_role("button", name="Rendben")
+                if ok_btn.count() > 0:
+                    ok_btn.first.click(timeout=3000)
+                    page.wait_for_timeout(500)
+                    print("Модалка 'нет мест' закрыта по кнопке Rendben")
+            except Exception as e:
+                print("Не удалось закрыть модалку 'нет мест': " + str(e))
+            return True
+    except Exception as e:
+        print("Ошибка при проверке модалки 'нет мест': " + str(e))
+    return False
+
+
+def check_real_calendar_reached(page):
+    """
+    Проверяет, попали ли мы на реальную страницу выбора даты
+    (это отдельный виджет на английском языке: "Select a date", "Time period").
+    """
+    try:
+        if page.get_by_text("Select a date", exact=False).count() > 0:
+            return True
+        if page.get_by_text("Time period", exact=False).count() > 0:
+            return True
+    except Exception as e:
+        print("Ошибка при проверке признаков реального календаря: " + str(e))
+    return False
+
+
+def check_calendar_has_free_slots(page):
+    """
+    На реальной странице календаря свободные слоты помечены словом "Free".
+    Используем ТОЛЬКО видимый текст страницы (inner_text), а не весь HTML,
+    чтобы не ловить скрытые/неотрендеренные элементы.
+    """
+    try:
+        visible_text = page.locator("body").inner_text()
     except Exception as e:
         print("Не удалось прочитать видимый текст body: " + str(e))
+        visible_text = ""
 
-    return has_slots
+    has_free = "free" in visible_text.lower()
+    print("Проверка реального календаря: слово 'Free' найдено = " + str(has_free))
+
+    if not has_free:
+        print("Длина видимого текста страницы календаря: " + str(len(visible_text)))
+
+    return has_free
+
+
+def collect_validation_errors(page):
+    """Собирает видимые сообщения об ошибках валидации формы (если есть)."""
+    reasons = []
+    error_selectors = [
+        ".is-invalid:visible",
+        ".invalid-feedback:visible",
+        ".text-danger:visible",
+        ".alert-danger:visible",
+    ]
+    for sel in error_selectors:
+        try:
+            errs = page.locator(sel)
+            cnt = errs.count()
+            for i in range(min(cnt, 10)):
+                try:
+                    t = errs.nth(i).inner_text().strip()
+                    if t:
+                        reasons.append(t)
+                except Exception:
+                    pass
+        except Exception as e:
+            print("Ошибка при проверке селектора ошибок " + sel + ": " + str(e))
+    return reasons
 
 
 def run():
+    """
+    Возвращает кортеж (status, reasons):
+      status = True          -> слоты найдены (реальный календарь, слово "Free")
+      status = False         -> слотов нет (либо модалка "nincs szabad időpont",
+                                 либо реальный календарь без "Free")
+      status = "unverified"  -> ни модалки, ни календаря не найдено -
+                                 похоже форма не прошла валидацию, доверять
+                                 результату НЕЛЬЗЯ
+      status = None          -> техническая ошибка на более раннем шаге
+    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -221,7 +334,7 @@ def run():
             print("Ошибка на этапе выбора места/услуги: " + str(e))
             safe_screenshot(page, "error_step2.png")
             browser.close()
-            return None
+            return None, []
 
         try:
             fill_form(page)
@@ -230,7 +343,7 @@ def run():
             print("Ошибка на этапе заполнения формы: " + str(e))
             safe_screenshot(page, "error_step3.png")
             browser.close()
-            return None
+            return None, []
 
         try:
             try:
@@ -282,21 +395,49 @@ def run():
             print(str(e))
             safe_screenshot(page, "error_step4.png")
             browser.close()
-            return None
+            return None, []
 
-        has_slots = check_calendar_for_slots(page)
+        # --- Определяем реальный исход ---
+
+        # 1) Явная, подтверждённая сайтом модалка "нет мест"
+        if check_no_slots_popup(page):
+            safe_screenshot(page, "step5_no_slots_popup.png")
+            browser.close()
+            return False, []
+
+        # 2) Фразы "нет мест" не видно. Прежде чем радостно сообщать "слоты есть",
+        #    подстраховываемся: если форма не прошла валидацию (мы застряли
+        #    на шаге 1 с ошибками) - сайт мог просто не успеть выполнить
+        #    реальную проверку слотов. В этом случае НЕ считаем, что слоты есть.
+        reasons = collect_validation_errors(page)
+        if reasons:
+            print("Фраза 'нет мест' не найдена, но обнаружены ошибки валидации формы: " + " | ".join(reasons))
+            safe_screenshot(page, "step5_unverified.png")
+            browser.close()
+            return "unverified", reasons
+
+        # 3) Ни модалки "нет мест", ни ошибок валидации - считаем, что слоты есть
+        print("Фраза 'нет мест' не найдена, ошибок валидации нет - считаем, что слоты ЕСТЬ")
+        safe_screenshot(page, "step5_slots_available.png")
         browser.close()
-        return has_slots
+        return True, []
+
+
 if __name__ == "__main__":
     try:
-        result = run()
+        result, reasons = run()
 
         if result is True:
-            notify("‼️‼️ СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/")
+            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
         elif result is False:
-            notify("Нет")
+            notify("Proverka vypolnena. Svobodnykh slotov net.")
+        elif result == "unverified":
+            msg = "⚠️ Не удалось проверить: не удалось подтвердить ни отсутствие, ни наличие мест (форма могла не пройти валидацию)."
+            if reasons:
+                msg += " Возможные причины: " + "; ".join(reasons[:3])
+            notify(msg)
         else:
-            notify("⚠️ Ошибка проверки")
+            notify("Proverka zavershilas s oshibkoi.")
 
     except Exception as e:
-        notify("⚠️ Ошибка: " + str(e))
+        notify("Oshibka: " + str(e))
