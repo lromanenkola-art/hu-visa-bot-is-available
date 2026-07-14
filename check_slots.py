@@ -8,20 +8,47 @@ class StepFailedError(Exception):
     pass
 
 
-def notify(text):
+def notify(text, photo_path=None, silent=False):
     token = os.environ["TG_TOKEN"]
     chat_id = os.environ["TG_CHAT_ID"]
+
+    if photo_path and os.path.exists(photo_path):
+        try:
+            with open(photo_path, "rb") as f:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{token}/sendPhoto",
+                    data={
+                        "chat_id": chat_id,
+                        "caption": text,
+                        "disable_notification": "true" if silent else "false"
+                    },
+                    files={"photo": f}
+                )
+            print("Telegram (photo) status:", response.status_code)
+            print("Telegram (photo) response:", response.text)
+            return
+        except Exception as e:
+            print("Не удалось отправить фото, отправляю обычным сообщением: " + str(e))
 
     response = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data={
             "chat_id": chat_id,
-            "text": text
+            "text": text,
+            "disable_notification": "true" if silent else "false"
         }
     )
 
     print("Telegram status:", response.status_code)
     print("Telegram response:", response.text)
+
+
+def find_existing_screenshot(candidates):
+    """Возвращает первый существующий файл из списка кандидатов, либо None."""
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
 
 
 def safe_screenshot(page, name):
@@ -200,15 +227,24 @@ def fill_form(page):
         results[label_text] = fill_field_by_label(page, label_text, value)
 
     not_filled = [lbl for lbl, ok in results.items() if not ok]
-    if not_filled:
-        # Поле не найдено/не заполнено - это критично, форма гарантированно
-        # не пройдёт валидацию. Останавливаемся здесь с чёткой ошибкой,
-        # а не тянем дальше вслепую.
+    if not_filled and len(not_filled) == len(label_value_pairs):
+        # Не нашли вообще НИ ОДНОГО поля - разметка страницы, видимо,
+        # серьёзно изменилась, дальше двигаться бессмысленно.
         raise StepFailedError(
-            "Не удалось заполнить обязательные поля формы: " + ", ".join(not_filled)
+            "Не удалось заполнить ни одного поля формы - похоже, разметка страницы изменилась"
+        )
+    elif not_filled:
+        # Отдельные поля могут отсутствовать на форме для конкретного города/офиса
+        # (например, у Белграда нет поля 'Residential community in Serbia',
+        # которое есть у Сабадки) - это не повод останавливать сценарий.
+        # Настоящую проблему (действительно обязательное пустое поле)
+        # поймает проверка ошибок валидации после клика по кнопке.
+        print(
+            "ВНИМАНИЕ: не удалось найти следующие поля (возможно, их просто нет "
+            "на форме для этого города): " + ", ".join(not_filled)
         )
 
-    print("Все поля с непустыми значениями успешно найдены и заполнены по label")
+    print("Заполнение формы завершено (см. предупреждения выше, если были)")
 
     checkboxes = page.locator("input[type=checkbox]:visible")
     if checkboxes.count() == 0:
@@ -471,14 +507,32 @@ if __name__ == "__main__":
         result, reasons = run()
 
         if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            photo = find_existing_screenshot(["step5_calendar_reached.png", "step4_calendar.png"])
+            notify(
+                "Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/",
+                photo_path=photo,
+                silent=False
+            )
         elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
+            photo = find_existing_screenshot([
+                "step5_red_nocase_message.png",
+                "step5_red_nocase_message_fallback.png"
+            ])
+            notify(
+                "Proverka vypolnena. Svobodnykh slotov net.",
+                photo_path=photo,
+                silent=True  # тихое уведомление - не дёргает телефон
+            )
         else:
             msg = "⚠️ Oshibka proverki: ne udalos' proiti vse shagi do kontsa."
             if reasons:
                 msg += " Prichina: " + "; ".join(reasons[:3])
-            notify(msg)
+            photo = find_existing_screenshot([
+                "error_step_failed.png",
+                "error_unexpected.png",
+                "step5_unverified.png"
+            ])
+            notify(msg, photo_path=photo, silent=False)
 
     except Exception as e:
         notify("Oshibka: " + str(e))
