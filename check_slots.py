@@ -217,26 +217,58 @@ def fill_form(page):
 
 def check_no_slots_popup(page):
     """
-    Проверяет реальное, подтверждённое сайтом модальное окно об отсутствии
-    свободных мест (текст "nincs szabad időpont", видимый пользователю,
-    во всплывающем окне поверх формы). Если оно есть - закрывает его
-    и возвращает True.
+    Проверяет реальный, подтверждённый сайтом индикатор отсутствия
+    свободных мест. У этого элемента есть точный id="nocase"
+    (обнаружено по логам реального прогона), это надёжнее, чем
+    искать текст по всей странице.
     """
+    try:
+        nocase = page.locator("#nocase")
+        if nocase.count() > 0:
+            try:
+                is_visible = nocase.first.is_visible()
+            except Exception:
+                is_visible = False
+            text = ""
+            try:
+                text = nocase.first.inner_text().strip()
+            except Exception:
+                pass
+
+            print("Элемент #nocase найден. Видим: " + str(is_visible) + ", текст: [" + text + "]")
+
+            if is_visible and text:
+                print("Подтверждено: элемент #nocase видим и содержит текст - мест нет")
+                safe_screenshot(page, "step5_red_nocase_message.png")
+                try:
+                    ok_btn = page.get_by_role("button", name="Rendben")
+                    if ok_btn.count() > 0:
+                        ok_btn.first.click(timeout=3000)
+                        page.wait_for_timeout(500)
+                        print("Модалка 'нет мест' закрыта по кнопке Rendben")
+                except Exception as e:
+                    print("Не удалось закрыть модалку 'нет мест': " + str(e))
+                return True
+    except Exception as e:
+        print("Ошибка при проверке #nocase: " + str(e))
+
+    # Запасной вариант - поиск по тексту, если id вдруг поменяется
     try:
         popup = page.get_by_text("nincs szabad időpont", exact=False)
         if popup.count() > 0 and popup.first.is_visible():
-            print("Обнаружено модальное окно с текстом об отсутствии свободных мест")
+            print("Обнаружено модальное окно с текстом об отсутствии свободных мест (запасной способ поиска)")
+            safe_screenshot(page, "step5_red_nocase_message_fallback.png")
             try:
                 ok_btn = page.get_by_role("button", name="Rendben")
                 if ok_btn.count() > 0:
                     ok_btn.first.click(timeout=3000)
                     page.wait_for_timeout(500)
-                    print("Модалка 'нет мест' закрыта по кнопке Rendben")
-            except Exception as e:
-                print("Не удалось закрыть модалку 'нет мест': " + str(e))
+            except Exception:
+                pass
             return True
     except Exception as e:
-        print("Ошибка при проверке модалки 'нет мест': " + str(e))
+        print("Ошибка при запасной проверке текста 'нет мест': " + str(e))
+
     return False
 
 
