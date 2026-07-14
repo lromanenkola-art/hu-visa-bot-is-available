@@ -55,12 +55,12 @@ def select_location_and_service(page):
 
     page.wait_for_timeout(500)
 
-    print("Шаг В: ищу label с текстом Szabadka")
-    szabadka = page.locator("label:has-text('Szabadka')")
-    print("Найдено label с 'Szabadka': " + str(szabadka.count()))
+    print("Шаг В: ищу label с текстом Belgrád")
+    szabadka = page.locator("label:has-text('Belgrád')")
+    print("Найдено label с 'Belgrád': " + str(szabadka.count()))
     szabadka.first.click(timeout=10000)
     page.wait_for_timeout(1000)
-    print("Клик по Szabadka выполнен")
+    print("Клик по Belgrád выполнен")
 
     print("Шаг Г: ищу кнопку Ugytipus hozzaadasa")
     btn2 = page.locator("text=Ügytípus hozzáadása")
@@ -87,14 +87,14 @@ def select_location_and_service(page):
         except Exception as e:
             print("Label " + str(i) + ": ошибка чтения " + str(e))
 
-    visa = page.locator("label:has-text('Vízumkérelem (schengeni - C)')")
-    print("Найдено label с точным текстом визы C: " + str(visa.count()))
+    visa = page.locator("label:has-text('schengeni')")
+    print("Найдено label со словом 'schengeni': " + str(visa.count()))
     if visa.count() > 0:
         visa.first.click(timeout=10000)
         page.wait_for_timeout(500)
-        print("Клик по Vízumkérelem (schengeni - C) выполнен")
+        print("Клик по visa (schengeni) выполнен")
     else:
-        print("Точный вариант не найден - нужна ручная проверка списка выше")
+        print("Вариант с 'schengeni' не найден - нужна ручная проверка списка выше")
 
     try:
         save = page.get_by_role("button", name="Mentés")
@@ -491,16 +491,16 @@ if __name__ == "__main__":
         result, reasons = run()
 
         if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            notify("BEOGRAD: Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
         elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
+            notify("BEOGRAD: slotov net.")
         elif result == "unverified":
-            msg = "⚠️ Не удалось проверить: не удалось подтвердить ни отсутствие, ни наличие мест (форма могла не пройти валидацию)."
+            msg = "⚠️ BEOGRAD: не удалось проверить - не удалось подтвердить ни отсутствие, ни наличие мест (форма могла не пройти валидацию)."
             if reasons:
                 msg += " Возможные причины: " + "; ".join(reasons[:3])
             notify(msg)
         else:
-            notify("Proverka zavershilas s oshibkoi.")
+            notify("BEOGRAD: proverka zavershilas s oshibkoi.")
 
     except Exception as e:
-        notify("Oshibka: " + str(e))
+        notify("BEOGRAD: Oshibka - " + str(e))
