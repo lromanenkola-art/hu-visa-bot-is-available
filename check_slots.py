@@ -152,39 +152,62 @@ def xpath_literal(s):
     return "concat('" + "', \"'\", '".join(parts) + "')"
 
 
-def fill_field_by_label(page, label_text, value):
+def find_label_locator(page, label_text):
     """
-    Заполняет поле, находя его по подписи (label), а НЕ по порядковому номеру
-    и НЕ по порядку в HTML-коде (он может не совпадать с тем, что видно на экране).
+    Ищем label по тексту гибко:
+    1) точное совпадение (после нормализации пробелов);
+    2) если не нашлось - совпадение "текст начинается с..." (на случай,
+       если рядом с подписью есть "*" или ":" - признак обязательного поля).
+    При нескольких совпадениях (например "E-mail cím" - начало текста
+    "E-mail cím újra") берём тот вариант, чья длина ближе всего к искомой.
     """
-    if not value:
-        return False
+    lit = xpath_literal(label_text)
 
-    # Стратегия 1: стандартная связка <label for="..."> с полем.
-    # Несколько попыток с паузой - некоторые поля (например, дата рождения
-    # с датапикером) могут дорисовываться с небольшой задержкой.
-    for attempt in range(2):
+    exact_loc = page.locator(
+        "xpath=//*[self::label or self::div or self::span][normalize-space(text())=" + lit + "]"
+    )
+    if exact_loc.count() > 0:
+        return exact_loc.first
+
+    starts_loc = page.locator(
+        "xpath=//*[self::label or self::div or self::span][starts-with(normalize-space(text())," + lit + ")]"
+    )
+    scount = starts_loc.count()
+    if scount == 0:
+        return None
+    if scount == 1:
+        return starts_loc.first
+
+    best = None
+    best_diff = None
+    for i in range(scount):
         try:
-            field = page.get_by_label(label_text, exact=True)
-            if field.count() > 0 and field.first.is_visible():
-                field.first.fill(value)
-                print("Заполнено поле '" + label_text + "' (стандартная привязка label, попытка " + str(attempt + 1) + ")")
-                return True
+            el = starts_loc.nth(i)
+            txt = el.inner_text().strip()
+            diff = len(txt) - len(label_text)
+            if diff < 0:
+                continue
+            if best_diff is None or diff < best_diff:
+                best_diff = diff
+                best = el
         except Exception:
-            pass
-        page.wait_for_timeout(300)
+            continue
+    return best if best is not None else starts_loc.first
 
-    # Стратегия 2: ищем input по РЕАЛЬНОЙ ВИЗУАЛЬНОЙ ПОЗИЦИИ на экране
-    # (сравниваем координаты, а не порядок в HTML-коде, который может
-    # не совпадать с видимым расположением - именно это раньше приводило
-    # к тому, что значение улетало в первое попавшееся поле формы, например Név).
+
+def locate_input_for_label(page, label_text):
+    """Ищет input для указанного label, но НЕ заполняет его. Возвращает Locator или None."""
     try:
-        lit = xpath_literal(label_text)
-        label_loc = page.locator(
-            "xpath=//*[self::label or self::div or self::span][normalize-space(text())=" + lit + "]"
-        )
-        if label_loc.count() > 0:
-            label_box = label_loc.first.bounding_box()
+        field = page.get_by_label(label_text, exact=True)
+        if field.count() > 0 and field.first.is_visible():
+            return field.first
+    except Exception:
+        pass
+
+    try:
+        label_loc = find_label_locator(page, label_text)
+        if label_loc is not None:
+            label_box = label_loc.bounding_box()
             if label_box:
                 label_center_y = label_box["y"] + label_box["height"] / 2
                 all_inputs = page.locator("input:visible")
@@ -199,26 +222,72 @@ def fill_field_by_label(page, label_text, value):
                             continue
                         input_center_y = box["y"] + box["height"] / 2
                         dy = abs(input_center_y - label_center_y)
-                        # Поле должно быть примерно на той же строке, что и label
-                        if dy <= 18 and (best_dy is None or dy < best_dy):
+                        if dy <= 22 and (best_dy is None or dy < best_dy):
                             best_dy = dy
                             best_input = inp
                     except Exception:
                         continue
-                if best_input is not None:
-                    best_input.fill(value)
-                    print(
-                        "Заполнено поле '" + label_text
-                        + "' (по визуальной позиции рядом с label, dy=" + str(round(best_dy, 1)) + "px)"
-                    )
-                    return True
-                else:
-                    print("Для label '" + label_text + "' не нашлось input на той же строке (по координатам)")
+                return best_input
     except Exception as e:
-        print("Ошибка при поиске поля по визуальной позиции для label '" + label_text + "': " + str(e))
+        print("Ошибка при поиске input для label '" + label_text + "': " + str(e))
+    return None
 
-    print("НЕ удалось найти поле для label '" + label_text + "' - значение НЕ записано")
+
+def fill_field_by_label(page, label_text, value):
+    """Находит поле по label (с retry) и заполняет его."""
+    if not value:
+        return False
+
+    for attempt in range(2):
+        inp = locate_input_for_label(page, label_text)
+        if inp is not None:
+            try:
+                inp.fill(value)
+                print("Заполнено поле '" + label_text + "' (попытка " + str(attempt + 1) + ")")
+                return True
+            except Exception as e:
+                print("Не удалось заполнить найденный input для '" + label_text + "': " + str(e))
+        page.wait_for_timeout(300)
+
+    print("НЕ удалось найти поле для label '" + label_text + "' обычным способом")
     return False
+
+
+def fill_field_next_row_after(page, reference_box, value, field_name_for_log="поле"):
+    """
+    Запасной, прицельный способ: берём координаты уже известного поля
+    (например, успешно заполненного 'Név') и ищем ближайший input СТРОГО НИЖЕ
+    него по Y - это должна быть следующая строка формы. Используется, когда
+    обычный поиск по label совсем не срабатывает (например, для нестандартных
+    виджетов вроде датапикера).
+    """
+    try:
+        ref_y = reference_box["y"] + reference_box["height"] / 2
+        all_inputs = page.locator("input:visible")
+        icount = all_inputs.count()
+        candidates = []
+        for i in range(icount):
+            try:
+                inp = all_inputs.nth(i)
+                box = inp.bounding_box()
+                if not box:
+                    continue
+                cy = box["y"] + box["height"] / 2
+                if cy > ref_y + 2:
+                    candidates.append((cy, inp))
+            except Exception:
+                continue
+        if not candidates:
+            print("Запасной способ (следующая строка): не нашлось полей ниже опорной точки")
+            return False
+        candidates.sort(key=lambda t: t[0])
+        next_input = candidates[0][1]
+        next_input.fill(value)
+        print("Заполнено '" + field_name_for_log + "' запасным способом (следующая строка формы по Y)")
+        return True
+    except Exception as e:
+        print("Ошибка в запасном способе 'следующая строка' для '" + field_name_for_log + "': " + str(e))
+        return False
 
 
 def fill_form(page):
@@ -234,10 +303,39 @@ def fill_form(page):
         print(name + " задан: " + str(bool(val)) + ", длина: " + str(len(val)))
 
     email = os.environ.get("VISA_EMAIL", "")
+    results = {}
 
+    # --- Név заполняем первым и запоминаем его координаты ---
+    # (координаты нужны как опорная точка для запасного способа
+    # заполнения даты рождения ниже)
+    name_value = os.environ.get("VISA_NAME", "")
+    nev_input = locate_input_for_label(page, "Név")
+    nev_box = None
+    if nev_input is not None:
+        nev_box = nev_input.bounding_box()
+        if name_value:
+            try:
+                nev_input.fill(name_value)
+                results["Név"] = True
+                print("Заполнено поле 'Név'")
+            except Exception as e:
+                print("Не удалось заполнить 'Név': " + str(e))
+                results["Név"] = False
+    else:
+        print("Поле 'Név' не найдено")
+        results["Név"] = False
+
+    # --- Születési idő: обычный способ, а если не сработал - прицельный
+    # запасной вариант (следующая строка формы сразу после Név по Y) ---
+    birthdate_value = os.environ.get("VISA_BIRTHDATE", "")
+    bd_ok = fill_field_by_label(page, "Születési idő", birthdate_value)
+    if not bd_ok and birthdate_value and nev_box is not None:
+        print("Обычный способ для 'Születési idő' не сработал - пробую запасной (следующая строка после Név)")
+        bd_ok = fill_field_next_row_after(page, nev_box, birthdate_value, field_name_for_log="Születési idő")
+    results["Születési idő"] = bd_ok
+
+    # --- Остальные поля - обычным способом по label ---
     label_value_pairs = [
-        ("Név", os.environ.get("VISA_NAME", "")),
-        ("Születési idő", os.environ.get("VISA_BIRTHDATE", "")),
         ("Kérelmezők száma", os.environ.get("VISA_APPLICANTS_COUNT", "1")),
         ("Értesítési telefonszám", os.environ.get("VISA_PHONE", "")),
         ("E-mail cím", email),
@@ -248,12 +346,11 @@ def fill_form(page):
         ("Residential community in Serbia", os.environ.get("VISA_RESIDENCE_COMMUNITY", "")),
     ]
 
-    results = {}
     for label_text, value in label_value_pairs:
         results[label_text] = fill_field_by_label(page, label_text, value)
 
     not_filled = [lbl for lbl, ok in results.items() if not ok]
-    if not_filled and len(not_filled) == len(label_value_pairs):
+    if not_filled and len(not_filled) == len(results):
         # Не нашли вообще НИ ОДНОГО поля - разметка страницы, видимо,
         # серьёзно изменилась, дальше двигаться бессмысленно.
         raise StepFailedError(
