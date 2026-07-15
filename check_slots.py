@@ -154,42 +154,68 @@ def xpath_literal(s):
 
 def fill_field_by_label(page, label_text, value):
     """
-    Заполняет поле, находя его по подписи (label), а НЕ по порядковому номеру.
-    Это устойчиво к любым сдвигам разметки.
+    Заполняет поле, находя его по подписи (label), а НЕ по порядковому номеру
+    и НЕ по порядку в HTML-коде (он может не совпадать с тем, что видно на экране).
     """
     if not value:
         return False
 
-    try:
-        field = page.get_by_label(label_text, exact=True)
-        if field.count() > 0:
-            field.first.fill(value)
-            print("Заполнено поле '" + label_text + "' (стандартная привязка label)")
-            return True
-    except Exception:
-        pass
+    # Стратегия 1: стандартная связка <label for="..."> с полем.
+    # Несколько попыток с паузой - некоторые поля (например, дата рождения
+    # с датапикером) могут дорисовываться с небольшой задержкой.
+    for attempt in range(2):
+        try:
+            field = page.get_by_label(label_text, exact=True)
+            if field.count() > 0 and field.first.is_visible():
+                field.first.fill(value)
+                print("Заполнено поле '" + label_text + "' (стандартная привязка label, попытка " + str(attempt + 1) + ")")
+                return True
+        except Exception:
+            pass
+        page.wait_for_timeout(300)
 
+    # Стратегия 2: ищем input по РЕАЛЬНОЙ ВИЗУАЛЬНОЙ ПОЗИЦИИ на экране
+    # (сравниваем координаты, а не порядок в HTML-коде, который может
+    # не совпадать с видимым расположением - именно это раньше приводило
+    # к тому, что значение улетало в первое попавшееся поле формы, например Név).
     try:
         lit = xpath_literal(label_text)
         label_loc = page.locator(
             "xpath=//*[self::label or self::div or self::span][normalize-space(text())=" + lit + "]"
         )
         if label_loc.count() > 0:
-            for level in [1, 2, 3]:
-                try:
-                    row = label_loc.first.locator("xpath=ancestor::div[" + str(level) + "]")
-                    input_in_row = row.locator("input:visible")
-                    if input_in_row.count() > 0:
-                        input_in_row.first.fill(value)
-                        print(
-                            "Заполнено поле '" + label_text
-                            + "' (найдено рядом с label, уровень контейнера " + str(level) + ")"
-                        )
-                        return True
-                except Exception:
-                    continue
+            label_box = label_loc.first.bounding_box()
+            if label_box:
+                label_center_y = label_box["y"] + label_box["height"] / 2
+                all_inputs = page.locator("input:visible")
+                icount = all_inputs.count()
+                best_input = None
+                best_dy = None
+                for i in range(icount):
+                    try:
+                        inp = all_inputs.nth(i)
+                        box = inp.bounding_box()
+                        if not box:
+                            continue
+                        input_center_y = box["y"] + box["height"] / 2
+                        dy = abs(input_center_y - label_center_y)
+                        # Поле должно быть примерно на той же строке, что и label
+                        if dy <= 18 and (best_dy is None or dy < best_dy):
+                            best_dy = dy
+                            best_input = inp
+                    except Exception:
+                        continue
+                if best_input is not None:
+                    best_input.fill(value)
+                    print(
+                        "Заполнено поле '" + label_text
+                        + "' (по визуальной позиции рядом с label, dy=" + str(round(best_dy, 1)) + "px)"
+                    )
+                    return True
+                else:
+                    print("Для label '" + label_text + "' не нашлось input на той же строке (по координатам)")
     except Exception as e:
-        print("Ошибка при поиске поля по label '" + label_text + "': " + str(e))
+        print("Ошибка при поиске поля по визуальной позиции для label '" + label_text + "': " + str(e))
 
     print("НЕ удалось найти поле для label '" + label_text + "' - значение НЕ записано")
     return False
