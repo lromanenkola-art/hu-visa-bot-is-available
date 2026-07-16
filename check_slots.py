@@ -253,6 +253,39 @@ def fill_field_by_label(page, label_text, value):
     return False
 
 
+def fill_next_field_via_tab(page, from_input, value, field_name_for_log="поле", max_tabs=5):
+    """
+    Последний запасной способ: встаём в already-focused/только что заполненное
+    поле (from_input) и жмём Tab, пока фокус не попадёт на настоящее текстовое
+    поле (не кнопку "i", не чекбокс) - и печатаем туда значение с клавиатуры.
+    Не зависит ни от координат, ни от разметки - использует реальный порядок
+    перехода по Tab в браузере.
+    """
+    try:
+        from_input.click()
+        for step in range(max_tabs):
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(150)
+            try:
+                active_tag = page.evaluate("document.activeElement.tagName")
+                active_type = (page.evaluate("document.activeElement.type") or "").lower()
+                active_readonly = page.evaluate("document.activeElement.readOnly")
+            except Exception:
+                active_tag, active_type, active_readonly = "", "", False
+
+            if active_tag == "INPUT" and active_type not in ("button", "checkbox", "radio", "submit") and not active_readonly:
+                page.keyboard.type(value)
+                print(
+                    "Заполнено '" + field_name_for_log + "' через Tab-навигацию с клавиатуры (шаг " + str(step + 1) + ")"
+                )
+                return True
+        print("Tab-навигация: за " + str(max_tabs) + " шагов не нашли подходящее текстовое поле для '" + field_name_for_log + "'")
+        return False
+    except Exception as e:
+        print("Ошибка в Tab-навигации для '" + field_name_for_log + "': " + str(e))
+        return False
+
+
 def fill_field_next_row_after(page, reference_box, value, field_name_for_log="поле"):
     """
     Запасной, прицельный способ: берём координаты уже известного поля
@@ -332,6 +365,9 @@ def fill_form(page):
     if not bd_ok and birthdate_value and nev_box is not None:
         print("Обычный способ для 'Születési idő' не сработал - пробую запасной (следующая строка после Név)")
         bd_ok = fill_field_next_row_after(page, nev_box, birthdate_value, field_name_for_log="Születési idő")
+    if not bd_ok and birthdate_value and nev_input is not None:
+        print("Способ по координатам тоже не сработал для 'Születési idő' - пробую Tab-навигацию с клавиатуры")
+        bd_ok = fill_next_field_via_tab(page, nev_input, birthdate_value, field_name_for_log="Születési idő")
     results["Születési idő"] = bd_ok
 
     # --- Остальные поля - обычным способом по label ---
