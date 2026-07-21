@@ -89,14 +89,14 @@ def select_location_and_service(page):
 
     page.wait_for_timeout(500)
 
-    print("Шаг В: ищу label с текстом Szabadka")
-    szabadka = page.locator("label:has-text('Szabadka')")
-    print("Найдено label с 'Szabadka': " + str(szabadka.count()))
+    print("Шаг В: ищу label с текстом Belgrád")
+    szabadka = page.locator("label:has-text('Belgrád')")
+    print("Найдено label с 'Belgrád': " + str(szabadka.count()))
     if szabadka.count() == 0:
-        raise StepFailedError("Не найден пункт 'Szabadka' в списке городов")
+        raise StepFailedError("Не найден пункт 'Belgrád' в списке городов")
     szabadka.first.click(timeout=10000)
     page.wait_for_timeout(1000)
-    print("Клик по Szabadka выполнен")
+    print("Клик по Belgrád выполнен")
 
     print("Шаг Г: ищу кнопку Ugytipus hozzaadasa")
     btn2 = page.locator("text=Ügytípus hozzáadása")
@@ -369,8 +369,6 @@ def fill_form(page):
     results["Születési idő"] = bd_ok
 
     # --- Остальные поля - обычным способом по label ---
-    # Примечание: у Сабадки, в отличие от Белграда, обычно ЕСТЬ поле
-    # "Residential community in Serbia" - оставляем его в списке.
     label_value_pairs = [
         ("Kérelmezők száma", os.environ.get("VISA_APPLICANTS_COUNT", "1")),
         ("Értesítési telefonszám", os.environ.get("VISA_PHONE", "")),
@@ -393,9 +391,11 @@ def fill_form(page):
             "Не удалось заполнить ни одного поля формы - похоже, разметка страницы изменилась"
         )
     elif not_filled:
-        # Отдельные поля могут отсутствовать на форме для конкретного города/офиса -
-        # это не повод останавливать сценарий. Настоящую проблему (действительно
-        # обязательное пустое поле) поймает проверка ошибок валидации после клика.
+        # Отдельные поля могут отсутствовать на форме для конкретного города/офиса
+        # (например, у Белграда нет поля 'Residential community in Serbia',
+        # которое есть у Сабадки) - это не повод останавливать сценарий.
+        # Настоящую проблему (действительно обязательное пустое поле)
+        # поймает проверка ошибок валидации после клика по кнопке.
         print(
             "ВНИМАНИЕ: не удалось найти следующие поля (возможно, их просто нет "
             "на форме для этого города): " + ", ".join(not_filled)
@@ -463,12 +463,13 @@ def check_no_slots_popup(page):
     непустой. Если найден - делает отдельный скриншот красной надписи
     ДО закрытия попапа, затем закрывает его кнопкой Rendben.
 
-    ВАЖНО: здесь намеренно НЕТ запасного способа поиска по тексту через
-    get_by_text("nincs szabad időpont") - в версии для Белграда такой
-    fallback дал ложное срабатывание "нет мест" (нашёл этот текст в
-    скрытом дублирующемся узле DOM, хотя основной индикатор #nocase был
-    не виден - то есть слоты, похоже, реально были). Поэтому доверяем
-    только #nocase, а если он не виден - просто ждём дальше.
+    ВАЖНО: раньше здесь был запасной способ поиска по тексту через
+    get_by_text("nincs szabad időpont"), но 19.07 он дал ложное
+    срабатывание - нашёл этот текст где-то ещё в DOM (вероятно, скрытый
+    дублирующийся узел) и посчитал его "видимым", хотя основной, точный
+    индикатор #nocase.is_visible() в этот момент был False (то есть слоты,
+    похоже, реально были). Поэтому запасной способ убран: доверяем только
+    #nocase, а если он не виден - просто ждём дальше (см. wait_for_real_outcome).
     """
     try:
         nocase = page.locator("#nocase")
@@ -700,14 +701,14 @@ if __name__ == "__main__":
         if result is True:
             photo = find_existing_screenshot(["step5_calendar_reached.png", "step4_calendar.png"])
             notify(
-                "SZABADKA: Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/",
+                "BEOGRAD: Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/",
                 photo_path=photo,
                 silent=False
             )
         elif result is False:
             print("Слотов нет - уведомление не отправляется (по настройке)")
         else:
-            msg = "⚠️ SZABADKA: Oshibka proverki: ne udalos' proiti vse shagi do kontsa."
+            msg = "⚠️ BEOGRAD: Oshibka proverki: ne udalos' proiti vse shagi do kontsa."
             if reasons:
                 msg += " Prichina: " + "; ".join(reasons[:3])
             photo = find_existing_screenshot([
@@ -718,4 +719,4 @@ if __name__ == "__main__":
             notify(msg, photo_path=photo, silent=False)
 
     except Exception as e:
-        notify("SZABADKA: Oshibka - " + str(e))
+        notify("BEOGRAD: Oshibka - " + str(e))
