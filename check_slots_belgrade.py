@@ -510,9 +510,20 @@ def check_real_calendar_reached(page):
     """
     Проверяет, попали ли мы на реальную страницу выбора даты.
     Ищем как английские, так и венгерские варианты подписей виджета,
-    а также типичные CSS-классы календарных виджетов - на случай,
-    если язык интерфейса на сайте в этот раз другой или текст чуть
-    отличается.
+    ТОЛЬКО если они реально видны на странице.
+
+    ВАЖНО: раньше здесь был запасной поиск по CSS-классам виджетов
+    ([class*='calendar'], [class*='datepicker'] и т.п.), но он дал
+    ложное срабатывание "календарь найден", хотя бот на самом деле
+    всё ещё был на шаге 1 (форма с данными) - совпадение произошло
+    из-за скрытого виджета-датапикера у поля "Születési idő", которое
+    присутствует в DOM всегда, даже до перехода на шаг 2. Поэтому
+    CSS-fallback убран, а текстовые маркеры теперь проверяются на
+    реальную видимость (is_visible), а не просто на наличие в DOM.
+
+    Дополнительно: даже если текстовый маркер "виден", проверяем, что
+    поле "Név" с шага 1 больше НЕ видно - это отсекает похожие ложные
+    совпадения.
     """
     try:
         markers = [
@@ -520,21 +531,33 @@ def check_real_calendar_reached(page):
             "Válasszon időpontot", "Válasszon dátumot", "Időpont kiválasztása",
             "Válasszon napot", "Elérhető időpontok",
         ]
+        found_marker = None
         for m in markers:
             try:
-                if page.get_by_text(m, exact=False).count() > 0:
-                    print("Признак реального календаря найден по тексту: '" + m + "'")
-                    return True
+                loc = page.get_by_text(m, exact=False)
+                if loc.count() > 0 and loc.first.is_visible():
+                    found_marker = m
+                    break
             except Exception:
                 continue
 
-        # Запасной признак - типичная разметка календарных виджетов
-        calendar_widget = page.locator(
-            ".fc-daygrid, .fc-view, .fc-toolbar, [class*='calendar'], [class*='datepicker']"
-        )
-        if calendar_widget.count() > 0:
-            print("Признак реального календаря найден по CSS-классу виджета")
-            return True
+        if not found_marker:
+            return False
+
+        print("Признак реального календаря найден по видимому тексту: '" + found_marker + "'")
+
+        try:
+            nev_field = page.get_by_label("Név", exact=True)
+            if nev_field.count() > 0 and nev_field.first.is_visible():
+                print(
+                    "Текстовый маркер календаря найден, но поле 'Név' (шаг 1) всё ещё "
+                    "видно - это похоже на ложное совпадение, НЕ считаем календарь достигнутым"
+                )
+                return False
+        except Exception:
+            pass
+
+        return True
     except Exception as e:
         print("Ошибка при проверке признаков реального календаря: " + str(e))
     return False
@@ -636,7 +659,8 @@ def run():
             safe_screenshot(page, "step4_calendar.png")
 
             # Финал: ОБЯЗАНЫ дойти либо до видимой красной надписи, либо до реального календаря
-            outcome = wait_for_real_outcome(page, timeout_ms=25000)
+            outcome_timeout_ms = 25000
+            outcome = wait_for_real_outcome(page, timeout_ms=outcome_timeout_ms)
             print("Итог ожидания результата: " + outcome)
 
             if outcome == "no_slots":
@@ -653,7 +677,7 @@ def run():
             reasons = collect_validation_errors(page)
             if not reasons:
                 reasons.append(
-                    "За " + str(timeout_ms // 1000) + " секунд не появилась ни видимая красная надпись "
+                    "За " + str(outcome_timeout_ms // 1000) + " секунд не появилась ни видимая красная надпись "
                     "'нет мест', ни реальный календарь"
                 )
             safe_screenshot(page, "step5_unverified.png")
