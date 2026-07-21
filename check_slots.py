@@ -148,9 +148,8 @@ def fill_form(page):
         value = values[value_index]
 
         if not value:
-    value_index += 1
-    continue
-
+            value_index += 1
+            continue
 
         try:
             inputs.nth(i).fill(value)
