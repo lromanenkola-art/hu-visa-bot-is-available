@@ -462,6 +462,14 @@ def check_no_slots_popup(page):
     свободных мест: элемент с id="nocase" (красный текст), видимый и
     непустой. Если найден - делает отдельный скриншот красной надписи
     ДО закрытия попапа, затем закрывает его кнопкой Rendben.
+
+    ВАЖНО: раньше здесь был запасной способ поиска по тексту через
+    get_by_text("nincs szabad időpont"), но 19.07 он дал ложное
+    срабатывание - нашёл этот текст где-то ещё в DOM (вероятно, скрытый
+    дублирующийся узел) и посчитал его "видимым", хотя основной, точный
+    индикатор #nocase.is_visible() в этот момент был False (то есть слоты,
+    похоже, реально были). Поэтому запасной способ убран: доверяем только
+    #nocase, а если он не виден - просто ждём дальше (см. wait_for_real_outcome).
     """
     try:
         nocase = page.locator("#nocase")
@@ -490,38 +498,42 @@ def check_no_slots_popup(page):
                 except Exception as e:
                     print("Не удалось закрыть модалку 'нет мест': " + str(e))
                 return True
+            # #nocase есть в DOM, но пока не виден - это нормально,
+            # продолжаем ждать в wait_for_real_outcome.
     except Exception as e:
         print("Ошибка при проверке #nocase: " + str(e))
-
-    # Запасной вариант - поиск по тексту, если id вдруг поменяется
-    try:
-        popup = page.get_by_text("nincs szabad időpont", exact=False)
-        if popup.count() > 0 and popup.first.is_visible():
-            print("Обнаружено модальное окно с текстом об отсутствии свободных мест (запасной способ поиска)")
-            safe_screenshot(page, "step5_red_nocase_message_fallback.png")
-            try:
-                ok_btn = page.get_by_role("button", name="Rendben")
-                if ok_btn.count() > 0:
-                    ok_btn.first.click(timeout=3000)
-                    page.wait_for_timeout(500)
-            except Exception:
-                pass
-            return True
-    except Exception as e:
-        print("Ошибка при запасной проверке текста 'нет мест': " + str(e))
 
     return False
 
 
 def check_real_calendar_reached(page):
     """
-    Проверяет, попали ли мы на реальную страницу выбора даты
-    (это отдельный виджет: "Select a date", "Time period").
+    Проверяет, попали ли мы на реальную страницу выбора даты.
+    Ищем как английские, так и венгерские варианты подписей виджета,
+    а также типичные CSS-классы календарных виджетов - на случай,
+    если язык интерфейса на сайте в этот раз другой или текст чуть
+    отличается.
     """
     try:
-        if page.get_by_text("Select a date", exact=False).count() > 0:
-            return True
-        if page.get_by_text("Time period", exact=False).count() > 0:
+        markers = [
+            "Select a date", "Time period",
+            "Válasszon időpontot", "Válasszon dátumot", "Időpont kiválasztása",
+            "Válasszon napot", "Elérhető időpontok",
+        ]
+        for m in markers:
+            try:
+                if page.get_by_text(m, exact=False).count() > 0:
+                    print("Признак реального календаря найден по тексту: '" + m + "'")
+                    return True
+            except Exception:
+                continue
+
+        # Запасной признак - типичная разметка календарных виджетов
+        calendar_widget = page.locator(
+            ".fc-daygrid, .fc-view, .fc-toolbar, [class*='calendar'], [class*='datepicker']"
+        )
+        if calendar_widget.count() > 0:
+            print("Признак реального календаря найден по CSS-классу виджета")
             return True
     except Exception as e:
         print("Ошибка при проверке признаков реального календаря: " + str(e))
@@ -553,14 +565,14 @@ def collect_validation_errors(page):
     return reasons
 
 
-def wait_for_real_outcome(page, timeout_ms=15000):
+def wait_for_real_outcome(page, timeout_ms=25000):
     """
     Ждём (опрос каждые 500мс, до timeout_ms), пока не появится ОДИН из
     ДВУХ подтверждённых исходов:
-      - "no_slots"  -> появилась красная надпись "нет мест" (#nocase)
+      - "no_slots"  -> появилась видимая красная надпись "нет мест" (#nocase)
       - "calendar"  -> реально открылся календарь (шаг 2)
     Если за отведённое время НИЧЕГО из этого не произошло - "timeout",
-    и это считается ошибкой, а не поводом сообщить "слоты есть".
+    и это считается ошибкой, а не поводом сообщить "слоты есть" или "слотов нет".
     """
     waited = 0
     step_ms = 500
@@ -578,9 +590,9 @@ def run():
     """
     Возвращает кортеж (status, reasons):
       status = True    -> слоты найдены (бот реально увидел календарь)
-      status = False   -> слотов нет (бот реально увидел красную надпись
-                          "nincs szabad időpont" и сделал её скриншот)
-      status = None    -> ошибка: какой-то обязательный шаг не выполнен
+      status = False   -> слотов нет (бот реально увидел видимую красную
+                          надпись "nincs szabad időpont" и сделал её скриншот)
+      status = None     -> ошибка: какой-то обязательный шаг не выполнен
                           (подробности - в reasons)
     """
     with sync_playwright() as p:
@@ -623,8 +635,8 @@ def run():
                 raise StepFailedError("Шаг 'переход к выбору даты': непредвиденная ошибка - " + str(e))
             safe_screenshot(page, "step4_calendar.png")
 
-            # Финал: ОБЯЗАНЫ дойти либо до красной надписи, либо до реального календаря
-            outcome = wait_for_real_outcome(page, timeout_ms=15000)
+            # Финал: ОБЯЗАНЫ дойти либо до видимой красной надписи, либо до реального календаря
+            outcome = wait_for_real_outcome(page, timeout_ms=25000)
             print("Итог ожидания результата: " + outcome)
 
             if outcome == "no_slots":
@@ -637,11 +649,11 @@ def run():
                 browser.close()
                 return True, []
 
-            # timeout - явная ошибка, а не тихое "слоты есть"
+            # timeout - явная ошибка, а не тихое "слоты есть"/"слотов нет"
             reasons = collect_validation_errors(page)
             if not reasons:
                 reasons.append(
-                    "За " + str(timeout_ms // 1000) + " секунд не появилась ни красная надпись "
+                    "За " + str(timeout_ms // 1000) + " секунд не появилась ни видимая красная надпись "
                     "'нет мест', ни реальный календарь"
                 )
             safe_screenshot(page, "step5_unverified.png")
