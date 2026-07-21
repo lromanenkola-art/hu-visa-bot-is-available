@@ -3,52 +3,20 @@ import requests
 from playwright.sync_api import sync_playwright
 
 
-class StepFailedError(Exception):
-    """Поднимается, когда обязательный шаг сценария не выполнен."""
-    pass
-
-
-def notify(text, photo_path=None, silent=False):
+def notify(text):
     token = os.environ["TG_TOKEN"]
     chat_id = os.environ["TG_CHAT_ID"]
-
-    if photo_path and os.path.exists(photo_path):
-        try:
-            with open(photo_path, "rb") as f:
-                response = requests.post(
-                    f"https://api.telegram.org/bot{token}/sendPhoto",
-                    data={
-                        "chat_id": chat_id,
-                        "caption": text,
-                        "disable_notification": "true" if silent else "false"
-                    },
-                    files={"photo": f}
-                )
-            print("Telegram (photo) status:", response.status_code)
-            print("Telegram (photo) response:", response.text)
-            return
-        except Exception as e:
-            print("Не удалось отправить фото, отправляю обычным сообщением: " + str(e))
 
     response = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data={
             "chat_id": chat_id,
-            "text": text,
-            "disable_notification": "true" if silent else "false"
+            "text": text
         }
     )
 
     print("Telegram status:", response.status_code)
     print("Telegram response:", response.text)
-
-
-def find_existing_screenshot(candidates):
-    """Возвращает первый существующий файл из списка кандидатов, либо None."""
-    for path in candidates:
-        if os.path.exists(path):
-            return path
-    return None
 
 
 def safe_screenshot(page, name):
@@ -74,8 +42,6 @@ def select_location_and_service(page):
     print("Шаг А: ищу кнопку Helyszin kivalasztasa")
     btn = page.locator("text=Helyszín kiválasztása")
     print("Найдено кнопок 'Helyszín kiválasztása': " + str(btn.count()))
-    if btn.count() == 0:
-        raise StepFailedError("Не найдена кнопка 'Helyszín kiválasztása'")
     btn.first.click(timeout=10000)
 
     print("Шаг Б: жду появления модалки #modal2")
@@ -83,17 +49,15 @@ def select_location_and_service(page):
         page.wait_for_selector("#modal2.show", timeout=8000)
         print("Модалка #modal2 открылась (класс .show найден)")
     except Exception as e:
+        print("Модалка #modal2 НЕ открылась через .show: " + str(e))
         modal_count = page.locator("#modal2").count()
         print("Элементов #modal2 в DOM: " + str(modal_count))
-        raise StepFailedError("Модалка #modal2 (выбор города) не открылась: " + str(e))
 
     page.wait_for_timeout(500)
 
     print("Шаг В: ищу label с текстом Szabadka")
     szabadka = page.locator("label:has-text('Szabadka')")
     print("Найдено label с 'Szabadka': " + str(szabadka.count()))
-    if szabadka.count() == 0:
-        raise StepFailedError("Не найден пункт 'Szabadka' в списке городов")
     szabadka.first.click(timeout=10000)
     page.wait_for_timeout(1000)
     print("Клик по Szabadka выполнен")
@@ -101,8 +65,6 @@ def select_location_and_service(page):
     print("Шаг Г: ищу кнопку Ugytipus hozzaadasa")
     btn2 = page.locator("text=Ügytípus hozzáadása")
     print("Найдено кнопок 'Ügytípus hozzáadása': " + str(btn2.count()))
-    if btn2.count() == 0:
-        raise StepFailedError("Не найдена кнопка 'Ügytípus hozzáadása'")
     btn2.first.click(timeout=10000)
 
     print("Шаг Д: жду появления модалки #modalCases")
@@ -110,7 +72,7 @@ def select_location_and_service(page):
         page.wait_for_selector("#modalCases.show", timeout=8000)
         print("Модалка #modalCases открылась")
     except Exception as e:
-        raise StepFailedError("Модалка #modalCases (выбор типа услуги) не открылась: " + str(e))
+        print("Модалка #modalCases НЕ открылась: " + str(e))
 
     page.wait_for_timeout(500)
 
@@ -127,204 +89,33 @@ def select_location_and_service(page):
 
     visa = page.locator("label:has-text('Vízumkérelem (schengeni - C)')")
     print("Найдено label с точным текстом визы C: " + str(visa.count()))
-    if visa.count() == 0:
-        raise StepFailedError("Не найден пункт 'Vízumkérelem (schengeni - C)' в списке типов услуг")
-    visa.first.click(timeout=10000)
-    page.wait_for_timeout(500)
-    print("Клик по Vízumkérelem (schengeni - C) выполнен")
-
-    save = page.get_by_role("button", name="Mentés")
-    print("Найдено кнопок Mentés: " + str(save.count()))
-    if save.count() == 0:
-        raise StepFailedError("Не найдена кнопка 'Mentés' для сохранения выбора услуги")
-    save.first.click(timeout=5000)
-    page.wait_for_timeout(1000)
-    print("Клик по Mentés выполнен")
-
-
-def xpath_literal(s):
-    """Безопасно оборачивает строку для использования в XPath, даже если в ней есть кавычки."""
-    if "'" not in s:
-        return "'" + s + "'"
-    if '"' not in s:
-        return '"' + s + '"'
-    parts = s.split("'")
-    return "concat('" + "', \"'\", '".join(parts) + "')"
-
-
-def find_label_locator(page, label_text):
-    """
-    Ищем label по тексту гибко:
-    1) точное совпадение (после нормализации пробелов);
-    2) если не нашлось - совпадение "текст начинается с..." (на случай,
-       если рядом с подписью есть "*" или ":" - признак обязательного поля).
-    При нескольких совпадениях (например "E-mail cím" - начало текста
-    "E-mail cím újra") берём тот вариант, чья длина ближе всего к искомой.
-    """
-    lit = xpath_literal(label_text)
-
-    exact_loc = page.locator(
-        "xpath=//*[self::label or self::div or self::span][normalize-space(text())=" + lit + "]"
-    )
-    if exact_loc.count() > 0:
-        return exact_loc.first
-
-    starts_loc = page.locator(
-        "xpath=//*[self::label or self::div or self::span][starts-with(normalize-space(text())," + lit + ")]"
-    )
-    scount = starts_loc.count()
-    if scount == 0:
-        return None
-    if scount == 1:
-        return starts_loc.first
-
-    best = None
-    best_diff = None
-    for i in range(scount):
-        try:
-            el = starts_loc.nth(i)
-            txt = el.inner_text().strip()
-            diff = len(txt) - len(label_text)
-            if diff < 0:
-                continue
-            if best_diff is None or diff < best_diff:
-                best_diff = diff
-                best = el
-        except Exception:
-            continue
-    return best if best is not None else starts_loc.first
-
-
-def locate_input_for_label(page, label_text):
-    """Ищет input для указанного label, но НЕ заполняет его. Возвращает Locator или None."""
-    try:
-        field = page.get_by_label(label_text, exact=True)
-        if field.count() > 0 and field.first.is_visible():
-            return field.first
-    except Exception:
-        pass
+    if visa.count() > 0:
+        visa.first.click(timeout=10000)
+        page.wait_for_timeout(500)
+        print("Клик по Vízumkérelem (schengeni - C) выполнен")
+    else:
+        print("Точный вариант не найден - нужна ручная проверка списка выше")
 
     try:
-        label_loc = find_label_locator(page, label_text)
-        if label_loc is not None:
-            label_box = label_loc.bounding_box()
-            if label_box:
-                label_center_y = label_box["y"] + label_box["height"] / 2
-                all_inputs = page.locator("input:visible")
-                icount = all_inputs.count()
-                best_input = None
-                best_dy = None
-                for i in range(icount):
-                    try:
-                        inp = all_inputs.nth(i)
-                        box = inp.bounding_box()
-                        if not box:
-                            continue
-                        input_center_y = box["y"] + box["height"] / 2
-                        dy = abs(input_center_y - label_center_y)
-                        if dy <= 22 and (best_dy is None or dy < best_dy):
-                            best_dy = dy
-                            best_input = inp
-                    except Exception:
-                        continue
-                return best_input
+        save = page.get_by_role("button", name="Mentés")
+        print("Найдено кнопок Mentés: " + str(save.count()))
+        if save.count() > 0:
+            save.first.click(timeout=5000)
+            page.wait_for_timeout(1000)
+            print("Клик по Mentés выполнен")
     except Exception as e:
-        print("Ошибка при поиске input для label '" + label_text + "': " + str(e))
-    return None
-
-
-def fill_field_by_label(page, label_text, value):
-    """Находит поле по label (с retry) и заполняет его."""
-    if not value:
-        return False
-
-    for attempt in range(2):
-        inp = locate_input_for_label(page, label_text)
-        if inp is not None:
-            try:
-                inp.fill(value)
-                print("Заполнено поле '" + label_text + "' (попытка " + str(attempt + 1) + ")")
-                return True
-            except Exception as e:
-                print("Не удалось заполнить найденный input для '" + label_text + "': " + str(e))
-        page.wait_for_timeout(300)
-
-    print("НЕ удалось найти поле для label '" + label_text + "' обычным способом")
-    return False
-
-
-def fill_next_field_via_tab(page, from_input, value, field_name_for_log="поле", max_tabs=5):
-    """
-    Последний запасной способ: встаём в already-focused/только что заполненное
-    поле (from_input) и жмём Tab, пока фокус не попадёт на настоящее текстовое
-    поле (не кнопку "i", не чекбокс) - и печатаем туда значение с клавиатуры.
-    Не зависит ни от координат, ни от разметки - использует реальный порядок
-    перехода по Tab в браузере.
-    """
-    try:
-        from_input.click()
-        for step in range(max_tabs):
-            page.keyboard.press("Tab")
-            page.wait_for_timeout(150)
-            try:
-                active_tag = page.evaluate("document.activeElement.tagName")
-                active_type = (page.evaluate("document.activeElement.type") or "").lower()
-                active_readonly = page.evaluate("document.activeElement.readOnly")
-            except Exception:
-                active_tag, active_type, active_readonly = "", "", False
-
-            if active_tag == "INPUT" and active_type not in ("button", "checkbox", "radio", "submit") and not active_readonly:
-                page.keyboard.type(value)
-                print(
-                    "Заполнено '" + field_name_for_log + "' через Tab-навигацию с клавиатуры (шаг " + str(step + 1) + ")"
-                )
-                return True
-        print("Tab-навигация: за " + str(max_tabs) + " шагов не нашли подходящее текстовое поле для '" + field_name_for_log + "'")
-        return False
-    except Exception as e:
-        print("Ошибка в Tab-навигации для '" + field_name_for_log + "': " + str(e))
-        return False
-
-
-def fill_field_next_row_after(page, reference_box, value, field_name_for_log="поле"):
-    """
-    Запасной, прицельный способ: берём координаты уже известного поля
-    (например, успешно заполненного 'Név') и ищем ближайший input СТРОГО НИЖЕ
-    него по Y - это должна быть следующая строка формы. Используется, когда
-    обычный поиск по label совсем не срабатывает (например, для нестандартных
-    виджетов вроде датапикера).
-    """
-    try:
-        ref_y = reference_box["y"] + reference_box["height"] / 2
-        all_inputs = page.locator("input:visible")
-        icount = all_inputs.count()
-        candidates = []
-        for i in range(icount):
-            try:
-                inp = all_inputs.nth(i)
-                box = inp.bounding_box()
-                if not box:
-                    continue
-                cy = box["y"] + box["height"] / 2
-                if cy > ref_y + 2:
-                    candidates.append((cy, inp))
-            except Exception:
-                continue
-        if not candidates:
-            print("Запасной способ (следующая строка): не нашлось полей ниже опорной точки")
-            return False
-        candidates.sort(key=lambda t: t[0])
-        next_input = candidates[0][1]
-        next_input.fill(value)
-        print("Заполнено '" + field_name_for_log + "' запасным способом (следующая строка формы по Y)")
-        return True
-    except Exception as e:
-        print("Ошибка в запасном способе 'следующая строка' для '" + field_name_for_log + "': " + str(e))
-        return False
+        print("Ошибка при клике Mentés: " + str(e))
 
 
 def fill_form(page):
     page.wait_for_timeout(1000)
+
+    inputs = page.locator(
+        "input:visible:not([type=checkbox]):not([type=radio])"
+    )
+
+    count = inputs.count()
+    print("Visible inputs: " + str(count))
 
     secret_names = [
         "VISA_NAME", "VISA_BIRTHDATE", "VISA_APPLICANTS_COUNT",
@@ -335,363 +126,178 @@ def fill_form(page):
         val = os.environ.get(name, "")
         print(name + " задан: " + str(bool(val)) + ", длина: " + str(len(val)))
 
-    email = os.environ.get("VISA_EMAIL", "")
-    results = {}
-
-    # --- Név заполняем первым и запоминаем его координаты ---
-    # (координаты нужны как опорная точка для запасного способа
-    # заполнения даты рождения ниже)
-    name_value = os.environ.get("VISA_NAME", "")
-    nev_input = locate_input_for_label(page, "Név")
-    nev_box = None
-    if nev_input is not None:
-        nev_box = nev_input.bounding_box()
-        if name_value:
-            try:
-                nev_input.fill(name_value)
-                results["Név"] = True
-                print("Заполнено поле 'Név'")
-            except Exception as e:
-                print("Не удалось заполнить 'Név': " + str(e))
-                results["Név"] = False
-    else:
-        print("Поле 'Név' не найдено")
-        results["Név"] = False
-
-    # --- Születési idő: обычный способ, а если не сработал - прицельный
-    # запасной вариант (следующая строка формы сразу после Név по Y) ---
-    birthdate_value = os.environ.get("VISA_BIRTHDATE", "")
-    bd_ok = fill_field_by_label(page, "Születési idő", birthdate_value)
-    if not bd_ok and birthdate_value and nev_box is not None:
-        print("Обычный способ для 'Születési idő' не сработал - пробую запасной (следующая строка после Név)")
-        bd_ok = fill_field_next_row_after(page, nev_box, birthdate_value, field_name_for_log="Születési idő")
-    if not bd_ok and birthdate_value and nev_input is not None:
-        print("Способ по координатам тоже не сработал для 'Születési idő' - пробую Tab-навигацию с клавиатуры")
-        bd_ok = fill_next_field_via_tab(page, nev_input, birthdate_value, field_name_for_log="Születési idő")
-    results["Születési idő"] = bd_ok
-
-    # --- Остальные поля - обычным способом по label ---
-    label_value_pairs = [
-        ("Kérelmezők száma", os.environ.get("VISA_APPLICANTS_COUNT", "1")),
-        ("Értesítési telefonszám", os.environ.get("VISA_PHONE", "")),
-        ("E-mail cím", email),
-        ("E-mail cím újra", email),
-        ("Szerb tartózkodási engedély száma, érvényessége", os.environ.get("VISA_RESIDENCE_PERMIT", "")),
-        ("Állampolgárság", os.environ.get("VISA_NATIONALITY", "")),
-        ("Útlevél száma", os.environ.get("VISA_PASSPORT", "")),
-        ("Residential community in Serbia", os.environ.get("VISA_RESIDENCE_COMMUNITY", "")),
+    values = [
+        os.environ.get("VISA_NAME", ""),
+        os.environ.get("VISA_BIRTHDATE", ""),
+        os.environ.get("VISA_APPLICANTS_COUNT", "1"),
+        os.environ.get("VISA_PHONE", ""),
+        os.environ.get("VISA_EMAIL", ""),
+        os.environ.get("VISA_EMAIL", ""),
+        os.environ.get("VISA_RESIDENCE_PERMIT", ""),
+        os.environ.get("VISA_NATIONALITY", ""),
+        os.environ.get("VISA_PASSPORT", ""),
+        os.environ.get("VISA_RESIDENCE_COMMUNITY", "")
     ]
 
-    for label_text, value in label_value_pairs:
-        results[label_text] = fill_field_by_label(page, label_text, value)
+    value_index = 0
 
-    not_filled = [lbl for lbl, ok in results.items() if not ok]
-    if not_filled and len(not_filled) == len(results):
-        # Не нашли вообще НИ ОДНОГО поля - разметка страницы, видимо,
-        # серьёзно изменилась, дальше двигаться бессмысленно.
-        raise StepFailedError(
-            "Не удалось заполнить ни одного поля формы - похоже, разметка страницы изменилась"
-        )
-    elif not_filled:
-        # Отдельные поля могут отсутствовать на форме для конкретного города/офиса
-        # (например, у Белграда нет поля 'Residential community in Serbia',
-        # которое есть у Сабадки) - это не повод останавливать сценарий.
-        # Настоящую проблему (действительно обязательное пустое поле)
-        # поймает проверка ошибок валидации после клика по кнопке.
-        print(
-            "ВНИМАНИЕ: не удалось найти следующие поля (возможно, их просто нет "
-            "на форме для этого города): " + ", ".join(not_filled)
-        )
+    for i in range(count):
+        if value_index >= len(values):
+            break
 
-    print("Заполнение формы завершено (см. предупреждения выше, если были)")
+        value = values[value_index]
+
+        if not value:
+    value_index += 1
+    continue
+
+
+        try:
+            inputs.nth(i).fill(value)
+            value_index += 1
+        except Exception:
+            pass
 
     checkboxes = page.locator("input[type=checkbox]:visible")
-    if checkboxes.count() == 0:
-        raise StepFailedError("Не найдены чекбоксы согласия на форме")
 
     for i in range(checkboxes.count()):
         try:
             if not checkboxes.nth(i).is_checked():
                 checkboxes.nth(i).check(force=True)
-        except Exception as e:
-            raise StepFailedError("Не удалось отметить чекбокс согласия №" + str(i) + ": " + str(e))
+        except Exception:
+            pass
 
 
-def click_next_step(page):
-    """Закрывает модалки/оверлеи и жмёт кнопку перехода к выбору даты. Обязательный шаг."""
-    try:
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(500)
-    except Exception:
-        pass
+def check_calendar_for_slots(page):
+    content = page.content().lower()
 
-    try:
-        save = page.get_by_role("button", name="Mentés")
-        if save.count() > 0:
-            save.first.click(timeout=5000)
-            page.wait_for_timeout(1000)
-    except Exception:
-        pass
+    free_count = content.count("free")
+    print("Найдено слово 'free' на странице: " + str(free_count) + " раз")
 
-    try:
-        page.locator("button.btn-close").first.click(timeout=3000)
-        page.wait_for_timeout(1000)
-    except Exception:
-        pass
+    markers = ["nincs szabad", "nincs elérhető", "no available"]
+    has_slots = True
+    found_marker = None
+    for m in markers:
+        if m in content:
+            has_slots = False
+            found_marker = m
 
-    try:
-        page.locator("#modalCases").wait_for(state="hidden", timeout=10000)
-    except Exception:
-        pass
+    print("Проверка календаря: has_slots=" + str(has_slots))
+    if found_marker:
+        print("Найден маркер отсутствия слотов: '" + found_marker + "'")
+    elif free_count > 0:
+        print("ВНИМАНИЕ: слово 'free' встречается на странице - похоже, слоты реально есть!")
 
-    next_button = page.get_by_role("button", name="Tovább az időpontválasztáshoz")
-    count = next_button.count()
-    print("Найдено кнопок 'Tovább az időpontválasztáshoz': " + str(count))
-    if count == 0:
-        raise StepFailedError("Кнопка 'Tovább az időpontválasztáshoz' не найдена на странице")
-
-    next_button.scroll_into_view_if_needed()
-    next_button.click(force=True, timeout=15000)
-
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(2000)
-    print("Клик по кнопке перехода к выбору даты выполнен")
-
-
-def check_no_slots_popup(page):
-    """
-    Проверяет реальный, подтверждённый сайтом индикатор отсутствия
-    свободных мест: элемент с id="nocase" (красный текст), видимый и
-    непустой. Если найден - делает отдельный скриншот красной надписи
-    ДО закрытия попапа, затем закрывает его кнопкой Rendben.
-    """
-    try:
-        nocase = page.locator("#nocase")
-        if nocase.count() > 0:
-            try:
-                is_visible = nocase.first.is_visible()
-            except Exception:
-                is_visible = False
-            text = ""
-            try:
-                text = nocase.first.inner_text().strip()
-            except Exception:
-                pass
-
-            print("Элемент #nocase найден. Видим: " + str(is_visible) + ", текст: [" + text + "]")
-
-            if is_visible and text:
-                print("Подтверждено: элемент #nocase видим и содержит текст - мест нет")
-                safe_screenshot(page, "step5_red_nocase_message.png")
-                try:
-                    ok_btn = page.get_by_role("button", name="Rendben")
-                    if ok_btn.count() > 0:
-                        ok_btn.first.click(timeout=3000)
-                        page.wait_for_timeout(500)
-                        print("Модалка 'нет мест' закрыта по кнопке Rendben")
-                except Exception as e:
-                    print("Не удалось закрыть модалку 'нет мест': " + str(e))
-                return True
-    except Exception as e:
-        print("Ошибка при проверке #nocase: " + str(e))
-
-    # Запасной вариант - поиск по тексту, если id вдруг поменяется
-    try:
-        popup = page.get_by_text("nincs szabad időpont", exact=False)
-        if popup.count() > 0 and popup.first.is_visible():
-            print("Обнаружено модальное окно с текстом об отсутствии свободных мест (запасной способ поиска)")
-            safe_screenshot(page, "step5_red_nocase_message_fallback.png")
-            try:
-                ok_btn = page.get_by_role("button", name="Rendben")
-                if ok_btn.count() > 0:
-                    ok_btn.first.click(timeout=3000)
-                    page.wait_for_timeout(500)
-            except Exception:
-                pass
-            return True
-    except Exception as e:
-        print("Ошибка при запасной проверке текста 'нет мест': " + str(e))
-
-    return False
-
-
-def check_real_calendar_reached(page):
-    """
-    Проверяет, попали ли мы на реальную страницу выбора даты
-    (это отдельный виджет: "Select a date", "Time period").
-    """
-    try:
-        if page.get_by_text("Select a date", exact=False).count() > 0:
-            return True
-        if page.get_by_text("Time period", exact=False).count() > 0:
-            return True
-    except Exception as e:
-        print("Ошибка при проверке признаков реального календаря: " + str(e))
-    return False
-
-
-def collect_validation_errors(page):
-    """Собирает видимые сообщения об ошибках валидации формы (если есть)."""
-    reasons = []
-    error_selectors = [
-        ".is-invalid:visible",
-        ".invalid-feedback:visible",
-        ".text-danger:visible",
-        ".alert-danger:visible",
-    ]
-    for sel in error_selectors:
-        try:
-            errs = page.locator(sel)
-            cnt = errs.count()
-            for i in range(min(cnt, 10)):
-                try:
-                    t = errs.nth(i).inner_text().strip()
-                    if t:
-                        reasons.append(t)
-                except Exception:
-                    pass
-        except Exception as e:
-            print("Ошибка при проверке селектора ошибок " + sel + ": " + str(e))
-    return reasons
-
-
-def wait_for_real_outcome(page, timeout_ms=15000):
-    """
-    Ждём (опрос каждые 500мс, до timeout_ms), пока не появится ОДИН из
-    ДВУХ подтверждённых исходов:
-      - "no_slots"  -> появилась красная надпись "нет мест" (#nocase)
-      - "calendar"  -> реально открылся календарь (шаг 2)
-    Если за отведённое время НИЧЕГО из этого не произошло - "timeout",
-    и это считается ошибкой, а не поводом сообщить "слоты есть".
-    """
-    waited = 0
-    step_ms = 500
-    while waited <= timeout_ms:
-        if check_no_slots_popup(page):
-            return "no_slots"
-        if check_real_calendar_reached(page):
-            return "calendar"
-        page.wait_for_timeout(step_ms)
-        waited += step_ms
-    return "timeout"
+    return has_slots
 
 
 def run():
-    """
-    Возвращает кортеж (status, reasons):
-      status = True   -> слоты найдены (бот реально увидел календарь)
-      status = False  -> слотов нет (бот реально увидел красную надпись
-                          "nincs szabad időpont" и сделал её скриншот)
-      status = None    -> ошибка: какой-то обязательный шаг не выполнен
-                          (подробности - в reasons)
-    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
+        page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(2000)
+        safe_screenshot(page, "step1_initial.png")
+
         try:
-            page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
+            dismiss_cookie_banner(page)
+            safe_screenshot(page, "step1b_after_cookies.png")
+        except Exception as e:
+            print("Ошибка на этапе cookies: " + str(e))
+
+        try:
+            select_location_and_service(page)
+            safe_screenshot(page, "step2_after_selection.png")
+        except Exception as e:
+            print("Ошибка на этапе выбора места/услуги: " + str(e))
+            safe_screenshot(page, "error_step2.png")
+            browser.close()
+            return None
+
+        try:
+            fill_form(page)
+            safe_screenshot(page, "step3_after_fill.png")
+        except Exception as e:
+            print("Ошибка на этапе заполнения формы: " + str(e))
+            safe_screenshot(page, "error_step3.png")
+            browser.close()
+            return None
+
+        try:
+            try:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+            except:
+                pass
+
+            try:
+                save = page.get_by_role("button", name="Mentés")
+                if save.count() > 0:
+                    save.first.click(timeout=5000)
+                    page.wait_for_timeout(1000)
+            except:
+                pass
+
+            try:
+                page.locator("button.btn-close").first.click(timeout=3000)
+                page.wait_for_timeout(1000)
+            except:
+                pass
+
+            try:
+                page.locator("#modalCases").wait_for(
+                    state="hidden",
+                    timeout=10000
+                )
+            except:
+                pass
+
+            next_button = page.get_by_role(
+                "button",
+                name="Tovább az időpontválasztáshoz"
+            )
+
+            next_button.scroll_into_view_if_needed()
+
+            next_button.click(
+                force=True,
+                timeout=15000
+            )
+
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
-            safe_screenshot(page, "step1_initial.png")
 
-            try:
-                dismiss_cookie_banner(page)
-            except Exception as e:
-                print("Некритичная ошибка на этапе cookies: " + str(e))
-            safe_screenshot(page, "step1b_after_cookies.png")
-
-            try:
-                select_location_and_service(page)
-            except StepFailedError:
-                raise
-            except Exception as e:
-                raise StepFailedError("Шаг 'выбор места/услуги': непредвиденная ошибка - " + str(e))
-            safe_screenshot(page, "step2_after_selection.png")
-
-            try:
-                fill_form(page)
-            except StepFailedError:
-                raise
-            except Exception as e:
-                raise StepFailedError("Шаг 'заполнение формы': непредвиденная ошибка - " + str(e))
-            safe_screenshot(page, "step3_after_fill.png")
-
-            try:
-                click_next_step(page)
-            except StepFailedError:
-                raise
-            except Exception as e:
-                raise StepFailedError("Шаг 'переход к выбору даты': непредвиденная ошибка - " + str(e))
             safe_screenshot(page, "step4_calendar.png")
 
-            # Финал: ОБЯЗАНЫ дойти либо до красной надписи, либо до реального календаря
-            outcome = wait_for_real_outcome(page, timeout_ms=15000)
-            print("Итог ожидания результата: " + outcome)
-
-            if outcome == "no_slots":
+            page_check = page.content().lower()
+            if "kitöltése szükséges" in page_check or "hibás" in page_check:
+                print("Форма не прошла валидацию - переход к календарю НЕ состоялся")
                 browser.close()
-                return False, []
+                return None
 
-            if outcome == "calendar":
-                safe_screenshot(page, "step5_calendar_reached.png")
-                print("Реальный переход на шаг 2 (календарь) подтверждён - слоты ЕСТЬ")
-                browser.close()
-                return True, []
-
-            # timeout - явная ошибка, а не тихое "слоты есть"
-            reasons = collect_validation_errors(page)
-            if not reasons:
-                reasons.append(
-                    "За " + str(timeout_ms // 1000) + " секунд не появилась ни красная надпись "
-                    "'нет мест', ни реальный календарь"
-                )
-            safe_screenshot(page, "step5_unverified.png")
-            raise StepFailedError("Не удалось подтвердить итог: " + "; ".join(reasons))
-
-        except StepFailedError as e:
-            print("ОШИБКА ШАГА: " + str(e))
-            safe_screenshot(page, "error_step_failed.png")
-            browser.close()
-            return None, [str(e)]
         except Exception as e:
-            print("НЕПРЕДВИДЕННАЯ ОШИБКА: " + str(e))
-            safe_screenshot(page, "error_unexpected.png")
+            print(str(e))
+            safe_screenshot(page, "error_step4.png")
             browser.close()
-            return None, [str(e)]
+            return None
+
+        has_slots = check_calendar_for_slots(page)
+        browser.close()
+        return has_slots
 
 
 if __name__ == "__main__":
     try:
-        result, reasons = run()
+        result = run()
 
         if result is True:
-            photo = find_existing_screenshot(["step5_calendar_reached.png", "step4_calendar.png"])
-            notify(
-                "Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/",
-                photo_path=photo,
-                silent=False
-            )
+            notify("‼️‼️ СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/")
         elif result is False:
-            photo = find_existing_screenshot([
-                "step5_red_nocase_message.png",
-                "step5_red_nocase_message_fallback.png"
-            ])
-            notify(
-                "Proverka vypolnena. Svobodnykh slotov net.",
-                photo_path=photo,
-                silent=True  # тихое уведомление - не дёргает телефон
-            )
+            print("Слотов нет - уведомление не отправляется")
         else:
-            msg = "⚠️ Oshibka proverki: ne udalos' proiti vse shagi do kontsa."
-            if reasons:
-                msg += " Prichina: " + "; ".join(reasons[:3])
-            photo = find_existing_screenshot([
-                "error_step_failed.png",
-                "error_unexpected.png",
-                "step5_unverified.png"
-            ])
-            notify(msg, photo_path=photo, silent=False)
+            print("Не удалось проверить (ошибка/незавершённая форма) - уведомление не отправляется")
 
     except Exception as e:
-        notify("Oshibka: " + str(e))
+        print("Ошибка: " + str(e))
