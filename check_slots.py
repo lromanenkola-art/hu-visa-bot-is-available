@@ -456,19 +456,32 @@ def click_next_step(page):
     print("Клик по кнопке перехода к выбору даты выполнен")
 
 
+def _click_rendben(page):
+    """Закрывает модалку 'нет мест' кнопкой Rendben, если она есть."""
+    try:
+        ok_btn = page.get_by_role("button", name="Rendben")
+        if ok_btn.count() > 0:
+            ok_btn.first.click(timeout=3000)
+            page.wait_for_timeout(500)
+            print("Модалка 'нет мест' закрыта по кнопке Rendben")
+    except Exception as e:
+        print("Не удалось закрыть модалку 'нет мест': " + str(e))
+
+
 def check_no_slots_popup(page):
     """
     Проверяет реальный, подтверждённый сайтом индикатор отсутствия
-    свободных мест: элемент с id="nocase" (красный текст), видимый и
-    непустой. Если найден - делает отдельный скриншот красной надписи
-    ДО закрытия попапа, затем закрывает его кнопкой Rendben.
+    свободных мест.
 
-    ВАЖНО: здесь намеренно НЕТ запасного способа поиска по тексту через
-    get_by_text("nincs szabad időpont") - в версии для Белграда такой
-    fallback дал ложное срабатывание "нет мест" (нашёл этот текст в
-    скрытом дублирующемся узле DOM, хотя основной индикатор #nocase был
-    не виден - то есть слоты, похоже, реально были). Поэтому доверяем
-    только #nocase, а если он не виден - просто ждём дальше.
+    Способ 1 (основной): элемент с id="nocase", видимый и непустой.
+
+    Способ 2 (надёжный запасной): ищем контейнер, в котором ОДНОВРЕМЕННО
+    есть и текст "nincs szabad időpont", и вложенная кнопка "Rendben".
+    Такое сочетание почти наверняка означает настоящую открытую модалку
+    (а не случайный дублирующийся текст где-то ещё в DOM, как было с
+    прежним, слишком широким текстовым fallback-ом). Этот способ добавлен
+    потому что #nocase.is_visible() иногда возвращает False, хотя
+    модалка на скриншоте реально показана пользователю.
     """
     try:
         nocase = page.locator("#nocase")
@@ -488,19 +501,30 @@ def check_no_slots_popup(page):
             if is_visible and text:
                 print("Подтверждено: элемент #nocase видим и содержит текст - мест нет")
                 safe_screenshot(page, "step5_red_nocase_message.png")
-                try:
-                    ok_btn = page.get_by_role("button", name="Rendben")
-                    if ok_btn.count() > 0:
-                        ok_btn.first.click(timeout=3000)
-                        page.wait_for_timeout(500)
-                        print("Модалка 'нет мест' закрыта по кнопке Rendben")
-                except Exception as e:
-                    print("Не удалось закрыть модалку 'нет мест': " + str(e))
+                _click_rendben(page)
                 return True
-            # #nocase есть в DOM, но пока не виден - это нормально,
-            # продолжаем ждать в wait_for_real_outcome.
     except Exception as e:
         print("Ошибка при проверке #nocase: " + str(e))
+
+    try:
+        modal = page.locator(
+            "xpath=//*[contains(., 'nincs szabad időpont') and .//button[contains(., 'Rendben')]]"
+        )
+        mcount = modal.count()
+        if mcount > 0:
+            candidate = modal.last
+            try:
+                is_visible = candidate.is_visible()
+            except Exception:
+                is_visible = False
+            print("Запасной способ: контейнер 'нет мест' (текст+кнопка Rendben) найден, видим: " + str(is_visible))
+            if is_visible:
+                print("Подтверждено запасным способом: модалка 'нет мест' реально видна")
+                safe_screenshot(page, "step5_red_nocase_message_fallback.png")
+                _click_rendben(page)
+                return True
+    except Exception as e:
+        print("Ошибка при запасной проверке модалки 'нет мест': " + str(e))
 
     return False
 
