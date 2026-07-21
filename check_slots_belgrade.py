@@ -577,8 +577,8 @@ def wait_for_real_outcome(page, timeout_ms=15000):
 def run():
     """
     Возвращает кортеж (status, reasons):
-      status = True   -> слоты найдены (бот реально увидел календарь)
-      status = False  -> слотов нет (бот реально увидел красную надпись
+      status = True    -> слоты найдены (бот реально увидел календарь)
+      status = False   -> слотов нет (бот реально увидел красную надпись
                           "nincs szabad időpont" и сделал её скриншот)
       status = None    -> ошибка: какой-то обязательный шаг не выполнен
                           (подробности - в reasons)
@@ -671,15 +671,7 @@ if __name__ == "__main__":
                 silent=False
             )
         elif result is False:
-            photo = find_existing_screenshot([
-                "step5_red_nocase_message.png",
-                "step5_red_nocase_message_fallback.png"
-            ])
-            notify(
-                "BEOGRAD: slotov net.",
-                photo_path=photo,
-                silent=True  # тихое уведомление - не дёргает телефон
-            )
+            print("Слотов нет - уведомление не отправляется (по настройке)")
         else:
             msg = "⚠️ BEOGRAD: Oshibka proverki: ne udalos' proiti vse shagi do kontsa."
             if reasons:
