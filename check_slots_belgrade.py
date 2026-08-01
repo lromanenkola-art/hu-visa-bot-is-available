@@ -19,6 +19,24 @@ def notify(text):
     print("Telegram response:", response.text)
 
 
+def notify_with_photo(text, photo_path):
+    token = os.environ["TG_TOKEN"]
+    chat_id = os.environ["TG_CHAT_ID"]
+
+    try:
+        with open(photo_path, "rb") as f:
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data={"chat_id": chat_id, "caption": text},
+                files={"photo": f}
+            )
+        print("Telegram photo status:", response.status_code)
+        print("Telegram photo response:", response.text)
+    except Exception as e:
+        print("Не удалось отправить фото: " + str(e))
+        notify(text)
+
+
 def safe_screenshot(page, name):
     try:
         page.screenshot(path=name, full_page=True)
@@ -299,7 +317,10 @@ if __name__ == "__main__":
         result = run()
 
         if result is True:
-            notify("‼️‼️ БЕЛГРАД: СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/")
+            notify_with_photo(
+                "‼️‼️ БЕЛГРАД: СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/",
+                "step4_calendar.png"
+            )
         elif result is False:
             print("Белград: слотов нет - уведомление не отправляется")
         else:
