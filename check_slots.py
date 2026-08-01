@@ -19,6 +19,24 @@ def notify(text):
     print("Telegram response:", response.text)
 
 
+def notify_with_photo(text, photo_path):
+    token = os.environ["TG_TOKEN"]
+    chat_id = os.environ["TG_CHAT_ID"]
+
+    try:
+        with open(photo_path, "rb") as f:
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data={"chat_id": chat_id, "caption": text},
+                files={"photo": f}
+            )
+        print("Telegram photo status:", response.status_code)
+        print("Telegram photo response:", response.text)
+    except Exception as e:
+        print("Не удалось отправить фото: " + str(e))
+        notify(text)
+
+
 def safe_screenshot(page, name):
     try:
         page.screenshot(path=name, full_page=True)
@@ -169,6 +187,10 @@ def fill_form(page):
 
 def check_calendar_for_slots(page):
     content = page.content().lower()
+
+    free_count = content.count("free")
+    print("Найдено слово 'free' на странице: " + str(free_count) + " раз")
+
     markers = ["nincs szabad", "nincs elérhető", "no available"]
     has_slots = True
     found_marker = None
@@ -180,20 +202,8 @@ def check_calendar_for_slots(page):
     print("Проверка календаря: has_slots=" + str(has_slots))
     if found_marker:
         print("Найден маркер отсутствия слотов: '" + found_marker + "'")
-        idx = content.find(found_marker)
-        snippet = content[max(0, idx - 100):idx + 150]
-        print("Контекст вокруг маркера: " + snippet)
-    else:
-        print("Ни один из маркеров отсутствия слотов не найден на странице")
-        print("Длина всего текста страницы: " + str(len(content)))
-
-    try:
-        body_text = page.locator("body").inner_text()
-        idx2 = body_text.lower().find("időpont")
-        if idx2 >= 0:
-            print("Текст рядом с 'időpont' на видимой странице: " + body_text[max(0, idx2 - 50):idx2 + 300])
-    except Exception as e:
-        print("Не удалось прочитать видимый текст body: " + str(e))
+    elif free_count > 0:
+        print("ВНИМАНИЕ: слово 'free' встречается на странице - похоже, слоты реально есть!")
 
     return has_slots
 
@@ -203,7 +213,14 @@ def run():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
+        try:
+            page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
+        except Exception as e:
+            print("Первая попытка открыть сайт не удалась: " + str(e))
+            print("Пробую ещё раз через 5 секунд...")
+            page.wait_for_timeout(5000)
+            page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
+
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(2000)
         safe_screenshot(page, "step1_initial.png")
@@ -278,6 +295,12 @@ def run():
 
             safe_screenshot(page, "step4_calendar.png")
 
+            page_check = page.content().lower()
+            if "kitöltése szükséges" in page_check or "hibás" in page_check:
+                print("Форма не прошла валидацию - переход к календарю НЕ состоялся")
+                browser.close()
+                return None
+
         except Exception as e:
             print(str(e))
             safe_screenshot(page, "error_step4.png")
@@ -287,16 +310,21 @@ def run():
         has_slots = check_calendar_for_slots(page)
         browser.close()
         return has_slots
+
+
 if __name__ == "__main__":
     try:
         result = run()
 
         if result is True:
-            notify("Naiden svobodnyi slot! https://konzinfoidopont.mfa.gov.hu/")
+            notify_with_photo(
+                "‼️‼️ СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/",
+                "step4_calendar.png"
+            )
         elif result is False:
-            notify("Proverka vypolnena. Svobodnykh slotov net.")
+            print("Слотов нет - уведомление не отправляется")
         else:
-            notify("Proverka zavershilas s oshibkoi.")
+            print("Не удалось проверить (ошибка/незавершённая форма) - уведомление не отправляется")
 
     except Exception as e:
-        notify("Oshibka: " + str(e))
+        print("Ошибка: " + str(e))
