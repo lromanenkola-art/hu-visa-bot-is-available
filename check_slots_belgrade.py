@@ -175,6 +175,25 @@ def fill_form(page):
         except Exception:
             pass
 
+    # Дополнительная подстраховка: принудительно перезаписываем
+    # дату рождения и телефон по надёжному поиску через placeholder,
+    # так как эти поля чаще всего вызывали ошибку валидации.
+    try:
+        birthdate_field = page.get_by_placeholder("pl. 1990.01.30.")
+        if birthdate_field.count() > 0:
+            birthdate_field.first.fill(os.environ.get("VISA_BIRTHDATE", ""))
+            print("Дата рождения перепроверена/перезаписана по placeholder")
+    except Exception as e:
+        print("Не удалось перезаписать дату рождения по placeholder: " + str(e))
+
+    try:
+        phone_field = page.get_by_placeholder("pl. +3612345678")
+        if phone_field.count() > 0:
+            phone_field.first.fill(os.environ.get("VISA_PHONE", ""))
+            print("Телефон перепроверен/перезаписан по placeholder")
+    except Exception as e:
+        print("Не удалось перезаписать телефон по placeholder: " + str(e))
+
     checkboxes = page.locator("input[type=checkbox]:visible")
 
     for i in range(checkboxes.count()):
@@ -186,24 +205,29 @@ def fill_form(page):
 
 
 def check_calendar_for_slots(page):
-    content = page.content().lower()
+    try:
+        visible_text = page.locator("body").inner_text().lower()
+        print("Используется видимый текст страницы (inner_text)")
+    except Exception as e:
+        print("Не удалось получить видимый текст, использую весь HTML: " + str(e))
+        visible_text = page.content().lower()
 
-    free_count = content.count("free")
-    print("Найдено слово 'free' на странице: " + str(free_count) + " раз")
+    free_count = visible_text.count("free")
+    print("Найдено слово 'free' в ВИДИМОМ тексте: " + str(free_count) + " раз")
 
     markers = ["nincs szabad", "nincs elérhető", "no available"]
     has_slots = True
     found_marker = None
     for m in markers:
-        if m in content:
+        if m in visible_text:
             has_slots = False
             found_marker = m
 
     print("Проверка календаря: has_slots=" + str(has_slots))
     if found_marker:
-        print("Найден маркер отсутствия слотов: '" + found_marker + "'")
+        print("Найден маркер отсутствия слотов (в видимом тексте): '" + found_marker + "'")
     elif free_count > 0:
-        print("ВНИМАНИЕ: слово 'free' встречается на странице - похоже, слоты реально есть!")
+        print("ВНИМАНИЕ: слово 'free' видно на странице - похоже, слоты реально есть!")
 
     return has_slots
 
@@ -324,7 +348,8 @@ if __name__ == "__main__":
         elif result is False:
             print("Белград: слотов нет - уведомление не отправляется")
         else:
-            print("Белград: не удалось проверить (ошибка/незавершённая форма) - уведомление не отправляется")
+            print("Белград: не удалось проверить (ошибка/незавершённая форма)")
+            notify("⚠️ Белград: бот не смог проверить сайт в этот раз (техническая накладка). Возможно, стоит проверить вручную.")
 
     except Exception as e:
         print("Белград: ошибка - " + str(e))
