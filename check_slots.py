@@ -335,10 +335,29 @@ def run():
             except Exception as e:
                 print("Не удалось проверить disabled у кнопки: " + str(e))
 
-            next_button.click(
-                force=True,
-                timeout=15000
-            )
+            # Сначала пробуем настоящий клик мышью - если что-то перекрывает
+            # кнопку, Playwright сообщит об этом явно (без force это видно)
+            click_succeeded = False
+            try:
+                next_button.click(timeout=5000)
+                click_succeeded = True
+                print("Обычный клик по кнопке сработал")
+            except Exception as e:
+                print("Обычный клик не сработал (возможно, кнопка чем-то перекрыта): " + str(e))
+
+            if not click_succeeded:
+                # Кликаем напрямую через JS - это вызывает click() прямо на
+                # DOM-элементе кнопки, минуя реальное позиционирование мыши,
+                # поэтому не важно, перекрыт ли элемент чем-то визуально
+                try:
+                    next_button.first.evaluate("el => el.click()")
+                    click_succeeded = True
+                    print("JS-клик (el.click()) по кнопке выполнен")
+                except Exception as e:
+                    print("JS-клик тоже не сработал: " + str(e))
+                    # Последняя попытка - старый способ через force
+                    next_button.click(force=True, timeout=15000)
+                    print("Резервный force-клик выполнен")
 
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
