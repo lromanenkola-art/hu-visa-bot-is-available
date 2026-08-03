@@ -267,6 +267,23 @@ def run():
         try:
             fill_form(page)
             safe_screenshot(page, "step3_after_fill.png")
+
+            # Диагностика: смотрим, что реально осталось в текстовых
+            # полях после заполнения - чтобы в логах сразу было видно,
+            # если какое-то поле не заполнилось как надо
+            try:
+                check_inputs = page.locator(
+                    "input:visible:not([type=checkbox]):not([type=radio])"
+                )
+                for i in range(check_inputs.count()):
+                    try:
+                        val = check_inputs.nth(i).input_value()
+                        print("Проверка поля #" + str(i) + ": '" + val + "'")
+                    except Exception as e:
+                        print("Не удалось прочитать поле #" + str(i) + ": " + str(e))
+            except Exception as e:
+                print("Не удалось проверить заполненные поля: " + str(e))
+
         except Exception as e:
             print("Ошибка на этапе заполнения формы: " + str(e))
             safe_screenshot(page, "error_step3.png")
@@ -309,6 +326,12 @@ def run():
 
             next_button.scroll_into_view_if_needed()
 
+            try:
+                is_disabled = next_button.first.is_disabled()
+                print("Кнопка 'Tovább' disabled=" + str(is_disabled))
+            except Exception as e:
+                print("Не удалось проверить disabled у кнопки: " + str(e))
+
             next_button.click(
                 force=True,
                 timeout=15000
@@ -334,6 +357,11 @@ def run():
             ]
             if any(m in page_text for m in no_slots_markers):
                 print("Белград: обнаружена модалка 'нет свободных мест' - слотов нет")
+                # Отдельный скриншот именно в момент обнаружения модалки -
+                # step4_calendar.png мог быть сделан чуть раньше, до того
+                # как модалка полностью отрисовалась (анимация/fade-in)
+                page.wait_for_timeout(500)
+                safe_screenshot(page, "step5_no_slots_modal.png")
                 try:
                     ok_btn = page.get_by_role("button", name="Rendben")
                     if ok_btn.count() > 0:
