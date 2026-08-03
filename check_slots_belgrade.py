@@ -37,9 +37,9 @@ def notify_with_photo(text, photo_path):
         notify(text)
 
 
-def safe_screenshot(page, name):
+def safe_screenshot(page, name, full_page=True):
     try:
-        page.screenshot(path=name, full_page=True)
+        page.screenshot(path=name, full_page=full_page)
     except Exception as e:
         print("Не удалось сделать скриншот " + name + ": " + str(e))
 
@@ -387,30 +387,54 @@ def run():
                     print("Резервный force-клик выполнен")
 
             page.wait_for_load_state("networkidle", timeout=20000)
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(2000)
 
             safe_screenshot(page, "step4_calendar.png")
 
-            page_text = page.locator("body").inner_text().lower()
-
-            # Проверяем модалку "нет свободных слотов" - это НЕ ошибка,
-            # а нормальный ответ сайта, просто без перехода к календарю.
-            # Реальный текст модалки:
-            # "Tájékoztatjuk, hogy jelenleg nincs szabad időpont. Kérjük,
-            #  vegye fel a kapcsolatot az illetékes külképviselettel /
-            #  ügyfélszolgálattal."
+            # Ждём до 30 секунд, проверяя каждую секунду - что бы ни
+            # появилось первым (календарь / "нет слотов" / ошибка формы),
+            # реагируем сразу, не выжидая фиксированный таймаут впустую
             no_slots_markers = [
                 "nincs szabad időpont",
                 "nincs szabad",
                 "nincs elérhető"
             ]
-            if any(m in page_text for m in no_slots_markers):
+
+            outcome = None  # "calendar" | "no_slots" | "validation_error" | None
+            max_wait_seconds = 30
+            waited = 0
+
+            while waited < max_wait_seconds:
+                page_text = page.locator("body").inner_text().lower()
+
+                if any(m in page_text for m in no_slots_markers):
+                    outcome = "no_slots"
+                    break
+
+                if "kitöltése szükséges" in page_text or "hibás" in page_text:
+                    outcome = "validation_error"
+                    break
+
+                if page.locator("text=Time period").count() > 0:
+                    outcome = "calendar"
+                    break
+
+                page.wait_for_timeout(1000)
+                waited += 1
+
+            print(
+                "Белград: итог ожидания после клика: outcome=" + str(outcome) +
+                ", ждали примерно " + str(waited) + " сек."
+            )
+
+            # Финальный скриншот после ожидания - фиксирует то состояние,
+            # на котором мы реально остановились
+            safe_screenshot(page, "step4b_after_wait.png")
+
+            if outcome == "no_slots":
                 print("Белград: обнаружена модалка 'нет свободных мест' - слотов нет")
-                # Отдельный скриншот именно в момент обнаружения модалки -
-                # step4_calendar.png мог быть сделан чуть раньше, до того
-                # как модалка полностью отрисовалась (анимация/fade-in)
                 page.wait_for_timeout(500)
-                safe_screenshot(page, "step5_no_slots_modal.png")
+                safe_screenshot(page, "step5_no_slots_modal.png", full_page=False)
                 try:
                     ok_btn = page.get_by_role("button", name="Rendben")
                     if ok_btn.count() > 0:
@@ -420,24 +444,21 @@ def run():
                 browser.close()
                 return False
 
-            if "kitöltése szükséges" in page_text or "hibás" in page_text:
+            if outcome == "validation_error":
                 print("Белград: форма не прошла валидацию - переход к календарю НЕ состоялся")
                 browser.close()
                 return None
 
-            # Третий возможный исход: ни модалки "нет слотов", ни ошибки
-            # валидации нет, но и календарь мог не открыться (например,
-            # кнопка "тихо" осталась disabled). Проверяем явно.
-            try:
-                page.wait_for_selector("text=Time period", timeout=12000)
-                print("Белград: подтверждено, страница календаря открыта")
-            except Exception as e:
+            if outcome != "calendar":
                 print(
-                    "Белград: календарь НЕ открылся и модалка 'нет слотов' не найдена: "
-                    + str(e)
+                    "Белград: за " + str(max_wait_seconds) +
+                    " сек. не появился ни календарь, ни модалка 'нет слотов', "
+                    "ни ошибка валидации - неизвестное состояние страницы"
                 )
                 browser.close()
                 return None
+
+            print("Белград: подтверждено, страница календаря открыта")
 
         except Exception as e:
             print(str(e))
