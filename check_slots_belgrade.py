@@ -237,6 +237,9 @@ def run():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
+        page.on("console", lambda msg: print("BROWSER CONSOLE [" + msg.type + "]: " + msg.text))
+        page.on("pageerror", lambda exc: print("BROWSER PAGE ERROR: " + str(exc)))
+
         try:
             page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
         except Exception as e:
