@@ -234,11 +234,38 @@ def check_calendar_for_slots(page):
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+            ]
+        )
+        page = browser.new_page(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900}
+        )
+        page.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
 
         page.on("console", lambda msg: print("BROWSER CONSOLE [" + msg.type + "]: " + msg.text))
         page.on("pageerror", lambda exc: print("BROWSER PAGE ERROR: " + str(exc)))
+        page.on(
+            "response",
+            lambda resp: print(
+                "RESPONSE " + str(resp.status) + " " + resp.url
+            ) if "konzinfoidopont" in resp.url or "api" in resp.url.lower() else None
+        )
+        page.on(
+            "requestfailed",
+            lambda req: print(
+                "REQUEST FAILED: " + req.url + " - " + str(req.failure)
+            )
+        )
 
         try:
             page.goto("https://konzinfoidopont.mfa.gov.hu/", timeout=60000)
@@ -359,8 +386,8 @@ def run():
                     next_button.click(force=True, timeout=15000)
                     print("Резервный force-клик выполнен")
 
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(2000)
+            page.wait_for_load_state("networkidle", timeout=20000)
+            page.wait_for_timeout(4000)
 
             safe_screenshot(page, "step4_calendar.png")
 
@@ -402,7 +429,7 @@ def run():
             # валидации нет, но и календарь мог не открыться (например,
             # кнопка "тихо" осталась disabled). Проверяем явно.
             try:
-                page.wait_for_selector("text=Time period", timeout=5000)
+                page.wait_for_selector("text=Time period", timeout=12000)
                 print("Подтверждено: страница календаря открыта")
             except Exception as e:
                 print(
