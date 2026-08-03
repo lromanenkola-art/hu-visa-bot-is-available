@@ -171,20 +171,49 @@ def fill_form(page):
 
         try:
             inputs.nth(i).fill(value)
-            value_index += 1
-        except Exception:
-            pass
+        except Exception as e:
+            print(
+                "Не удалось заполнить поле #" + str(i) +
+                " (пропускаю, но не сбиваю порядок остальных): " + str(e)
+            )
+        value_index += 1
 
     # Дополнительная подстраховка: принудительно перезаписываем
     # дату рождения и телефон по надёжному поиску через placeholder,
     # так как эти поля чаще всего вызывали ошибку валидации.
-    try:
-        birthdate_field = page.get_by_placeholder("pl. 1990.01.30.")
-        if birthdate_field.count() > 0:
-            birthdate_field.first.fill(os.environ.get("VISA_BIRTHDATE", ""))
-            print("Дата рождения перепроверена/перезаписана по placeholder")
-    except Exception as e:
-        print("Не удалось перезаписать дату рождения по placeholder: " + str(e))
+    birthdate_written = False
+    birthdate_placeholders = ["pl. 1990.01.30.", "pl. 1990.01.30", "1990.01.30."]
+    for ph in birthdate_placeholders:
+        try:
+            birthdate_field = page.get_by_placeholder(ph)
+            if birthdate_field.count() > 0:
+                birthdate_field.first.fill(os.environ.get("VISA_BIRTHDATE", ""))
+                print("Дата рождения перепроверена/перезаписана по placeholder '" + ph + "'")
+                birthdate_written = True
+                break
+        except Exception as e:
+            print("Не удалось перезаписать дату рождения по placeholder '" + ph + "': " + str(e))
+
+    if not birthdate_written:
+        try:
+            label = page.locator("label", has_text="Születési")
+            if label.count() > 0:
+                for_attr = label.first.get_attribute("for")
+                field = None
+                if for_attr:
+                    candidate = page.locator('[id="' + for_attr + '"]')
+                    if candidate.count() > 0:
+                        field = candidate
+                if field is None:
+                    parent = label.first.locator("xpath=..")
+                    candidate = parent.locator("input:visible")
+                    if candidate.count() > 0:
+                        field = candidate
+                if field is not None and field.count() > 0:
+                    field.first.fill(os.environ.get("VISA_BIRTHDATE", ""))
+                    print("Дата рождения перезаписана по label 'Születési' (фолбэк)")
+        except Exception as e:
+            print("Не удалось перезаписать дату рождения по label: " + str(e))
 
     try:
         phone_field = page.get_by_placeholder("pl. +3612345678")
@@ -434,7 +463,40 @@ def run():
             if outcome == "no_slots":
                 print("Белград: обнаружена модалка 'нет свободных мест' - слотов нет")
                 page.wait_for_timeout(500)
-                safe_screenshot(page, "step5_no_slots_modal.png", full_page=False)
+
+                modal_shot_taken = False
+
+                try:
+                    dialog = page.locator("[role='dialog']")
+                    if dialog.count() > 0:
+                        dialog.first.scroll_into_view_if_needed()
+                        page.wait_for_timeout(300)
+                        dialog.first.screenshot(path="step5_no_slots_modal.png")
+                        modal_shot_taken = True
+                        print("Белград: скриншот модалки снят через [role=dialog]")
+                except Exception as e:
+                    print("Белград: не вышло снять модалку через [role=dialog]: " + str(e))
+
+                if not modal_shot_taken:
+                    try:
+                        text_loc = page.get_by_text("nincs szabad", exact=False)
+                        if text_loc.count() > 0:
+                            text_loc.first.scroll_into_view_if_needed()
+                            page.wait_for_timeout(300)
+                            text_loc.first.screenshot(path="step5_no_slots_modal.png")
+                            modal_shot_taken = True
+                            print("Белград: скриншот модалки снят через текст 'nincs szabad'")
+                    except Exception as e:
+                        print("Белград: не вышло снять модалку через текст: " + str(e))
+
+                if not modal_shot_taken:
+                    try:
+                        page.evaluate("window.scrollTo(0, 0)")
+                        page.wait_for_timeout(300)
+                    except Exception:
+                        pass
+                    safe_screenshot(page, "step5_no_slots_modal.png", full_page=False)
+                    print("Белград: скриншот модалки снят фолбэком (scroll top + viewport)")
                 try:
                     ok_btn = page.get_by_role("button", name="Rendben")
                     if ok_btn.count() > 0:
