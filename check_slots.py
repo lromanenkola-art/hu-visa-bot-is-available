@@ -327,6 +327,11 @@ def run():
             except:
                 pass
 
+            # Ловим ошибки/логи из консоли браузера - вдруг там есть
+            # причина, почему клик не срабатывает
+            page.on("console", lambda msg: print("BROWSER CONSOLE [" + msg.type + "]: " + msg.text))
+            page.on("pageerror", lambda exc: print("BROWSER PAGE ERROR: " + str(exc)))
+
             next_button = page.get_by_role(
                 "button",
                 name="Tovább az időpontválasztáshoz"
@@ -334,10 +339,34 @@ def run():
 
             next_button.scroll_into_view_if_needed()
 
+            # ДИАГНОСТИКА: проверяем реальное состояние кнопки и чекбоксов
+            # ПЕРЕД кликом, чтобы понять, почему клик может не сработать
+            try:
+                is_disabled = next_button.first.is_disabled()
+                print("Кнопка 'Tovább' disabled=" + str(is_disabled))
+            except Exception as e:
+                print("Не удалось проверить disabled у кнопки: " + str(e))
+
+            try:
+                cb = page.locator("input[type=checkbox]:visible")
+                for i in range(cb.count()):
+                    print(
+                        "Чекбокс #" + str(i) + " checked=" +
+                        str(cb.nth(i).is_checked())
+                    )
+            except Exception as e:
+                print("Не удалось проверить чекбоксы: " + str(e))
+
+            safe_screenshot(page, "step3b_before_click.png")
+
             next_button.click(
                 force=True,
                 timeout=15000
             )
+
+            # Ещё раз смотрим состояние сразу после клика, до всех wait
+            page.wait_for_timeout(500)
+            safe_screenshot(page, "step3c_right_after_click.png")
 
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
