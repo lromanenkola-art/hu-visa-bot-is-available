@@ -127,10 +127,11 @@ def select_location_and_service(page):
 
 def fill_field_by_label(page, label_text, value, exact=False):
     """
-    Находит инпут по тексту его label (а не по порядку в DOM) и
-    заполняет его. Это надёжно работает даже если разные формы
-    (Суботица / Белград) показывают поля в разном порядке или
-    с разным набором полей.
+    Находит инпут по label. Основной способ - через атрибут for у label
+    (стандартная, однозначная привязка label->input в HTML, не зависящая
+    от того, идёт ли input до или после label в разметке). Резервный
+    способ - поиск input внутри непосредственного родителя label (только
+    прямые соседи, а не "любой следующий input по всему DOM").
     """
     if not value:
         print("Пропускаю поле '" + label_text + "' - значение не задано")
@@ -141,31 +142,43 @@ def fill_field_by_label(page, label_text, value, exact=False):
         if exact:
             label = page.locator("label").filter(has_text=label_text)
 
-        label_count = label.count()
-        if label_count == 0:
+        if label.count() == 0:
             print("Label '" + label_text + "' не найден на странице")
             return False
 
-        # Ищем ближайший input в том же родительском блоке, что и label
-        container = label.first.locator(
-            "xpath=ancestor::*[self::div or self::td][1]"
-        )
-        field = container.locator(
-            "input:visible:not([type=checkbox]):not([type=radio])"
-        )
+        field = None
 
-        if field.count() == 0:
-            # fallback: ищем input сразу после label в DOM
-            field = label.first.locator(
-                "xpath=following::input[1]"
+        # Способ 1 (основной, надёжный): атрибут for у label указывает
+        # прямо на id нужного input
+        try:
+            for_attr = label.first.get_attribute("for")
+        except Exception:
+            for_attr = None
+
+        if for_attr:
+            candidate = page.locator('[id="' + for_attr + '"]')
+            if candidate.count() > 0:
+                field = candidate
+                print("Поле '" + label_text + "' найдено через label[for]")
+
+        # Способ 2 (резервный): input внутри непосредственного родителя
+        # label - НЕ используем "following::input[1]" по всему документу,
+        # так как это может найти совершенно постороннее поле
+        if field is None or field.count() == 0:
+            parent = label.first.locator("xpath=..")
+            candidate = parent.locator(
+                "input:visible:not([type=checkbox]):not([type=radio])"
             )
+            if candidate.count() > 0:
+                field = candidate
+                print("Поле '" + label_text + "' найдено внутри родителя label")
 
-        if field.count() == 0:
-            print("Input рядом с label '" + label_text + "' не найден")
+        if field is None or field.count() == 0:
+            print("Input для label '" + label_text + "' не найден ни одним из способов")
             return False
 
         field.first.fill(value)
-        print("Поле '" + label_text + "' заполнено (найдено по label)")
+        print("Поле '" + label_text + "' заполнено значением")
         return True
     except Exception as e:
         print("Ошибка заполнения поля '" + label_text + "': " + str(e))
@@ -292,6 +305,23 @@ def run():
         try:
             fill_form(page)
             safe_screenshot(page, "step3_after_fill.png")
+
+            # Проверяем, что реально осталось в текстовых полях -
+            # чтобы сразу увидеть в логах, если какое-то поле не
+            # заполнилось, а не ждать таймаута на кнопке дальше
+            try:
+                check_inputs = page.locator(
+                    "input:visible:not([type=checkbox]):not([type=radio])"
+                )
+                for i in range(check_inputs.count()):
+                    try:
+                        val = check_inputs.nth(i).input_value()
+                        print("Проверка поля #" + str(i) + ": '" + val + "'")
+                    except Exception as e:
+                        print("Не удалось прочитать поле #" + str(i) + ": " + str(e))
+            except Exception as e:
+                print("Не удалось проверить заполненные поля: " + str(e))
+
         except Exception as e:
             print("Ошибка на этапе заполнения формы: " + str(e))
             safe_screenshot(page, "error_step3.png")
@@ -327,6 +357,11 @@ def run():
             except:
                 pass
 
+            # Ловим ошибки/логи из консоли браузера - вдруг там есть
+            # причина, почему клик не срабатывает
+            page.on("console", lambda msg: print("BROWSER CONSOLE [" + msg.type + "]: " + msg.text))
+            page.on("pageerror", lambda exc: print("BROWSER PAGE ERROR: " + str(exc)))
+
             next_button = page.get_by_role(
                 "button",
                 name="Tovább az időpontválasztáshoz"
@@ -334,10 +369,34 @@ def run():
 
             next_button.scroll_into_view_if_needed()
 
+            # ДИАГНОСТИКА: проверяем реальное состояние кнопки и чекбоксов
+            # ПЕРЕД кликом, чтобы понять, почему клик может не сработать
+            try:
+                is_disabled = next_button.first.is_disabled()
+                print("Кнопка 'Tovább' disabled=" + str(is_disabled))
+            except Exception as e:
+                print("Не удалось проверить disabled у кнопки: " + str(e))
+
+            try:
+                cb = page.locator("input[type=checkbox]:visible")
+                for i in range(cb.count()):
+                    print(
+                        "Чекбокс #" + str(i) + " checked=" +
+                        str(cb.nth(i).is_checked())
+                    )
+            except Exception as e:
+                print("Не удалось проверить чекбоксы: " + str(e))
+
+            safe_screenshot(page, "step3b_before_click.png")
+
             next_button.click(
                 force=True,
                 timeout=15000
             )
+
+            # Ещё раз смотрим состояние сразу после клика, до всех wait
+            page.wait_for_timeout(500)
+            safe_screenshot(page, "step3c_right_after_click.png")
 
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
