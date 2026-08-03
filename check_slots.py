@@ -125,60 +125,15 @@ def select_location_and_service(page):
         print("Ошибка при клике Mentés: " + str(e))
 
 
-def fill_field_by_label(page, label_text, value, exact=False):
-    """
-    Находит инпут по тексту его label (а не по порядку в DOM) и
-    заполняет его. Это надёжно работает даже если разные формы
-    (Суботица / Белград) показывают поля в разном порядке или
-    с разным набором полей.
-    """
-    if not value:
-        print("Пропускаю поле '" + label_text + "' - значение не задано")
-        return False
-
-    try:
-        label = page.locator("label", has_text=label_text)
-        if exact:
-            label = page.locator("label").filter(has_text=label_text)
-
-        label_count = label.count()
-        if label_count == 0:
-            print("Label '" + label_text + "' не найден на странице")
-            return False
-
-        # Ищем ближайший input в том же родительском блоке, что и label
-        container = label.first.locator(
-            "xpath=ancestor::*[self::div or self::td][1]"
-        )
-        field = container.locator(
-            "input:visible:not([type=checkbox]):not([type=radio])"
-        )
-
-        if field.count() == 0:
-            # fallback: ищем input сразу после label в DOM
-            field = label.first.locator(
-                "xpath=following::input[1]"
-            )
-
-        if field.count() == 0:
-            print("Input рядом с label '" + label_text + "' не найден")
-            return False
-
-        field.first.fill(value)
-        print("Поле '" + label_text + "' заполнено (найдено по label)")
-        return True
-    except Exception as e:
-        print("Ошибка заполнения поля '" + label_text + "': " + str(e))
-        return False
-
-
 def fill_form(page):
     page.wait_for_timeout(1000)
 
     inputs = page.locator(
         "input:visible:not([type=checkbox]):not([type=radio])"
     )
-    print("Visible inputs всего на странице: " + str(inputs.count()))
+
+    count = inputs.count()
+    print("Visible inputs: " + str(count))
 
     secret_names = [
         "VISA_NAME", "VISA_BIRTHDATE", "VISA_APPLICANTS_COUNT",
@@ -189,20 +144,40 @@ def fill_form(page):
         val = os.environ.get(name, "")
         print(name + " задан: " + str(bool(val)) + ", длина: " + str(len(val)))
 
-    # Заполняем каждое поле по тексту его label - надёжно работает
-    # независимо от порядка полей в конкретной форме (Белград/Суботица)
-    fill_field_by_label(page, "Név", os.environ.get("VISA_NAME", ""))
-    fill_field_by_label(page, "Kérelmezők száma", os.environ.get("VISA_APPLICANTS_COUNT", "1"))
-    fill_field_by_label(page, "Értesítési telefonszám", os.environ.get("VISA_PHONE", ""))
-    fill_field_by_label(page, "E-mail cím újra", os.environ.get("VISA_EMAIL", ""))
-    fill_field_by_label(page, "E-mail cím", os.environ.get("VISA_EMAIL", ""))
-    fill_field_by_label(page, "tartózkodási engedély", os.environ.get("VISA_RESIDENCE_PERMIT", ""))
-    fill_field_by_label(page, "Állampolgárság", os.environ.get("VISA_NATIONALITY", ""))
-    fill_field_by_label(page, "Útlevél száma", os.environ.get("VISA_PASSPORT", ""))
-    fill_field_by_label(page, "Residential community", os.environ.get("VISA_RESIDENCE_COMMUNITY", ""))
+    values = [
+        os.environ.get("VISA_NAME", ""),
+        os.environ.get("VISA_BIRTHDATE", ""),
+        os.environ.get("VISA_APPLICANTS_COUNT", "1"),
+        os.environ.get("VISA_PHONE", ""),
+        os.environ.get("VISA_EMAIL", ""),
+        os.environ.get("VISA_EMAIL", ""),
+        os.environ.get("VISA_RESIDENCE_PERMIT", ""),
+        os.environ.get("VISA_NATIONALITY", ""),
+        os.environ.get("VISA_PASSPORT", ""),
+        os.environ.get("VISA_RESIDENCE_COMMUNITY", "")
+    ]
 
-    # Дата рождения и телефон - самые критичные поля по формату,
-    # перезаписываем их надёжно через placeholder дополнительно
+    value_index = 0
+
+    for i in range(count):
+        if value_index >= len(values):
+            break
+
+        value = values[value_index]
+
+        if not value:
+            value_index += 1
+            continue
+
+        try:
+            inputs.nth(i).fill(value)
+            value_index += 1
+        except Exception:
+            pass
+
+    # Дополнительная подстраховка: принудительно перезаписываем
+    # дату рождения и телефон по надёжному поиску через placeholder,
+    # так как эти поля чаще всего вызывали ошибку валидации.
     try:
         birthdate_field = page.get_by_placeholder("pl. 1990.01.30.")
         if birthdate_field.count() > 0:
@@ -327,11 +302,6 @@ def run():
             except:
                 pass
 
-            # Ловим ошибки/логи из консоли браузера - вдруг там есть
-            # причина, почему клик не срабатывает
-            page.on("console", lambda msg: print("BROWSER CONSOLE [" + msg.type + "]: " + msg.text))
-            page.on("pageerror", lambda exc: print("BROWSER PAGE ERROR: " + str(exc)))
-
             next_button = page.get_by_role(
                 "button",
                 name="Tovább az időpontválasztáshoz"
@@ -339,34 +309,10 @@ def run():
 
             next_button.scroll_into_view_if_needed()
 
-            # ДИАГНОСТИКА: проверяем реальное состояние кнопки и чекбоксов
-            # ПЕРЕД кликом, чтобы понять, почему клик может не сработать
-            try:
-                is_disabled = next_button.first.is_disabled()
-                print("Кнопка 'Tovább' disabled=" + str(is_disabled))
-            except Exception as e:
-                print("Не удалось проверить disabled у кнопки: " + str(e))
-
-            try:
-                cb = page.locator("input[type=checkbox]:visible")
-                for i in range(cb.count()):
-                    print(
-                        "Чекбокс #" + str(i) + " checked=" +
-                        str(cb.nth(i).is_checked())
-                    )
-            except Exception as e:
-                print("Не удалось проверить чекбоксы: " + str(e))
-
-            safe_screenshot(page, "step3b_before_click.png")
-
             next_button.click(
                 force=True,
                 timeout=15000
             )
-
-            # Ещё раз смотрим состояние сразу после клика, до всех wait
-            page.wait_for_timeout(500)
-            safe_screenshot(page, "step3c_right_after_click.png")
 
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
@@ -375,9 +321,9 @@ def run():
 
             page_text = page.locator("body").inner_text().lower()
 
-            # 1. Проверяем модалку "нет свободных слотов" - это НЕ ошибка,
+            # Проверяем модалку "нет свободных слотов" - это НЕ ошибка,
             # а нормальный ответ сайта, просто без перехода к календарю.
-            # Пример реального текста модалки:
+            # Реальный текст модалки:
             # "Tájékoztatjuk, hogy jelenleg nincs szabad időpont. Kérjük,
             #  vegye fel a kapcsolatot az illetékes külképviselettel /
             #  ügyfélszolgálattal."
@@ -397,26 +343,22 @@ def run():
                 browser.close()
                 return False
 
-            # 2. Проверяем реальные ошибки валидации формы
             if "kitöltése szükséges" in page_text or "hibás" in page_text:
                 print("Форма не прошла валидацию - переход к календарю НЕ состоялся")
                 browser.close()
                 return None
 
-            # 3. Проверяем, что мы реально попали на страницу календаря
-            calendar_reached = False
+            # Третий возможный исход: ни модалки "нет слотов", ни ошибки
+            # валидации нет, но и календарь мог не открыться (например,
+            # кнопка "тихо" осталась disabled). Проверяем явно.
             try:
                 page.wait_for_selector("text=Time period", timeout=5000)
-                calendar_reached = True
                 print("Подтверждено: страница календаря открыта")
             except Exception as e:
                 print(
                     "Календарь НЕ открылся и модалка 'нет слотов' не найдена: "
                     + str(e)
                 )
-
-            if not calendar_reached:
-                print("Неизвестное состояние страницы - результат = None (ошибка)")
                 browser.close()
                 return None
 
