@@ -319,9 +319,50 @@ def run():
 
             safe_screenshot(page, "step4_calendar.png")
 
-            page_check = page.content().lower()
-            if "kitöltése szükséges" in page_check or "hibás" in page_check:
-                print("Форма не прошла валидацию - переход к календарю НЕ состоялся")
+            page_text = page.locator("body").inner_text().lower()
+
+            # 1. Проверяем модалку "нет свободных слотов" - это НЕ ошибка,
+            # а нормальный ответ сайта, просто без перехода к календарю.
+            # Пример реального текста модалки:
+            # "Tájékoztatjuk, hogy jelenleg nincs szabad időpont. Kérjük,
+            #  vegye fel a kapcsolatot az illetékes külképviselettel /
+            #  ügyfélszolgálattal."
+            no_slots_markers = [
+                "nincs szabad időpont",
+                "nincs szabad",
+                "nincs elérhető"
+            ]
+            if any(m in page_text for m in no_slots_markers):
+                print("Белград: обнаружена модалка 'нет свободных мест' - слотов нет")
+                try:
+                    ok_btn = page.get_by_role("button", name="Rendben")
+                    if ok_btn.count() > 0:
+                        ok_btn.first.click(timeout=3000)
+                except Exception:
+                    pass
+                browser.close()
+                return False
+
+            # 2. Проверяем реальные ошибки валидации формы
+            if "kitöltése szükséges" in page_text or "hibás" in page_text:
+                print("Белград: форма не прошла валидацию - переход к календарю НЕ состоялся")
+                browser.close()
+                return None
+
+            # 3. Проверяем, что мы реально попали на страницу календаря
+            calendar_reached = False
+            try:
+                page.wait_for_selector("text=Time period", timeout=5000)
+                calendar_reached = True
+                print("Белград: подтверждено, страница календаря открыта")
+            except Exception as e:
+                print(
+                    "Белград: календарь НЕ открылся и модалка 'нет слотов' не найдена: "
+                    + str(e)
+                )
+
+            if not calendar_reached:
+                print("Белград: неизвестное состояние страницы - результат = None (ошибка)")
                 browser.close()
                 return None
 
