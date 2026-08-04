@@ -546,7 +546,31 @@ if __name__ == "__main__":
             print("Белград: слотов нет - уведомление не отправляется")
         else:
             print("Белград: не удалось проверить (ошибка/незавершённая форма)")
-            notify("⚠️ Белград: бот не смог проверить сайт в этот раз (техническая накладка). Возможно, стоит проверить вручную.")
+
+            candidate_screenshots = [
+                "step4b_after_wait.png",
+                "error_step4.png",
+                "step4_calendar.png",
+                "error_step3.png",
+                "step3_after_fill.png",
+                "error_step2.png",
+                "step2_after_selection.png",
+            ]
+            screenshot_to_send = None
+            for candidate in candidate_screenshots:
+                if os.path.exists(candidate):
+                    screenshot_to_send = candidate
+                    break
+
+            error_text = (
+                "⚠️ Белград: бот не смог проверить сайт в этот раз "
+                "(техническая накладка). Возможно, стоит проверить вручную."
+            )
+
+            if screenshot_to_send:
+                notify_with_photo(error_text, screenshot_to_send)
+            else:
+                notify(error_text)
 
     except Exception as e:
         print("Белград: ошибка - " + str(e))
