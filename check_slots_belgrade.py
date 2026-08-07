@@ -309,6 +309,18 @@ def run():
         safe_screenshot(page, "step1_initial.png")
 
         try:
+            initial_text = page.locator("body").inner_text().lower()
+            if "letiltásra került" in initial_text or "ip cím" in initial_text:
+                print(
+                    "Белград: IP-адрес раннера заблокирован сайтом "
+                    "(letiltásra került) - дальше идти бессмысленно"
+                )
+                browser.close()
+                return "ip_blocked"
+        except Exception as e:
+            print("Белград: не удалось проверить страницу на бан IP: " + str(e))
+
+        try:
             dismiss_cookie_banner(page)
             safe_screenshot(page, "step1b_after_cookies.png")
         except Exception as e:
@@ -548,6 +560,14 @@ if __name__ == "__main__":
             )
         elif result is False:
             print("Белград: слотов нет - уведомление не отправляется")
+        elif result == "ip_blocked":
+            print("Белград: IP раннера заблокирован сайтом")
+            notify(
+                "🚫 Белград: сайт заблокировал IP-адрес GitHub-раннера "
+                "(letiltásra került). Это не баг в коде - сайт банит "
+                "датацентровые IP Azure. Возможно, стоит проверить вручную "
+                "или настроить прокси."
+            )
         else:
             print("Белград: не удалось проверить (ошибка/незавершённая форма) даже со второй попытки")
 
