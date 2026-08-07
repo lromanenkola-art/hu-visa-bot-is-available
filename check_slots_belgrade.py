@@ -125,7 +125,7 @@ def select_location_and_service(page):
         print("Ошибка при клике Mentés: " + str(e))
 
 
-def fill_form(page):
+def fill_form(page, applicants_count):
     page.wait_for_timeout(1000)
 
     inputs = page.locator(
@@ -136,18 +136,19 @@ def fill_form(page):
     print("Visible inputs: " + str(count))
 
     secret_names = [
-        "VISA_NAME", "VISA_BIRTHDATE", "VISA_APPLICANTS_COUNT",
+        "VISA_NAME", "VISA_BIRTHDATE",
         "VISA_PHONE", "VISA_EMAIL", "VISA_RESIDENCE_PERMIT",
         "VISA_NATIONALITY", "VISA_PASSPORT", "VISA_RESIDENCE_COMMUNITY"
     ]
     for name in secret_names:
         val = os.environ.get(name, "")
         print(name + " задан: " + str(bool(val)) + ", длина: " + str(len(val)))
+    print("Число заявителей для этого прогона: " + str(applicants_count))
 
     values = [
         os.environ.get("VISA_NAME", ""),
         os.environ.get("VISA_BIRTHDATE", ""),
-        os.environ.get("VISA_APPLICANTS_COUNT", "1"),
+        str(applicants_count),
         os.environ.get("VISA_PHONE", ""),
         os.environ.get("VISA_EMAIL", ""),
         os.environ.get("VISA_EMAIL", ""),
@@ -261,7 +262,7 @@ def check_calendar_for_slots(page):
     return has_slots
 
 
-def run():
+def run(applicants_count=1):
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -336,7 +337,7 @@ def run():
             return None
 
         try:
-            fill_form(page)
+            fill_form(page, applicants_count)
             safe_screenshot(page, "step3_after_fill.png")
 
             # Диагностика: смотрим, что реально осталось в текстовых
@@ -546,55 +547,61 @@ def run():
 
 
 if __name__ == "__main__":
-    try:
-        result = run()
+    for applicants_count in [1, 2]:
+        try:
+            print("===== Белград: проверка для " + str(applicants_count) + " заявителя(ей) =====")
+            result = run(applicants_count=applicants_count)
 
-        if result is None:
-            print("Белград: первая попытка не удалась - пробую ещё раз перед отправкой ошибки")
-            result = run()
+            if result is None:
+                print("Белград: первая попытка не удалась - пробую ещё раз перед отправкой ошибки")
+                result = run(applicants_count=applicants_count)
 
-        if result is True:
-            notify_with_photo(
-                "‼️‼️ БЕЛГРАД: СЛОТ НАЙДЕН ‼️‼️ https://konzinfoidopont.mfa.gov.hu/",
-                "step4_calendar.png"
-            )
-        elif result is False:
-            print("Белград: слотов нет - уведомление не отправляется")
-        elif result == "ip_blocked":
-            print("Белград: IP раннера заблокирован сайтом")
-            notify(
-                "🚫 Белград: сайт заблокировал IP-адрес GitHub-раннера "
-                "(letiltásra került). Это не баг в коде - сайт банит "
-                "датацентровые IP Azure. Возможно, стоит проверить вручную "
-                "или настроить прокси."
-            )
-        else:
-            print("Белград: не удалось проверить (ошибка/незавершённая форма) даже со второй попытки")
+            label = "(" + str(applicants_count) + " заяв.)"
 
-            candidate_screenshots = [
-                "step4b_after_wait.png",
-                "error_step4.png",
-                "step4_calendar.png",
-                "error_step3.png",
-                "step3_after_fill.png",
-                "error_step2.png",
-                "step2_after_selection.png",
-            ]
-            screenshot_to_send = None
-            for candidate in candidate_screenshots:
-                if os.path.exists(candidate):
-                    screenshot_to_send = candidate
-                    break
-
-            error_text = (
-                "⚠️ Белград: бот не смог проверить сайт дважды подряд "
-                "(техническая накладка). Возможно, стоит проверить вручную."
-            )
-
-            if screenshot_to_send:
-                notify_with_photo(error_text, screenshot_to_send)
+            if result is True:
+                notify_with_photo(
+                    "‼️‼️ БЕЛГРАД: СЛОТ НАЙДЕН " + label + " ‼️‼️ https://konzinfoidopont.mfa.gov.hu/",
+                    "step4_calendar.png"
+                )
+            elif result is False:
+                print("Белград: слотов нет " + label + " - уведомление не отправляется")
+            elif result == "ip_blocked":
+                print("Белград: IP раннера заблокирован сайтом " + label)
+                notify(
+                    "🚫 Белград " + label + ": сайт заблокировал IP-адрес "
+                    "GitHub-раннера (letiltásra került). Это не баг в коде - "
+                    "сайт банит датацентровые IP Azure. Возможно, стоит "
+                    "проверить вручную или настроить прокси."
+                )
+                break
             else:
-                notify(error_text)
+                print("Белград: не удалось проверить " + label + " (ошибка/незавершённая форма) даже со второй попытки")
 
-    except Exception as e:
-        print("Белград: ошибка - " + str(e))
+                candidate_screenshots = [
+                    "step4b_after_wait.png",
+                    "error_step4.png",
+                    "step4_calendar.png",
+                    "error_step3.png",
+                    "step3_after_fill.png",
+                    "error_step2.png",
+                    "step2_after_selection.png",
+                ]
+                screenshot_to_send = None
+                for candidate in candidate_screenshots:
+                    if os.path.exists(candidate):
+                        screenshot_to_send = candidate
+                        break
+
+                error_text = (
+                    "⚠️ Белград " + label + ": бот не смог проверить сайт "
+                    "дважды подряд (техническая накладка). Возможно, стоит "
+                    "проверить вручную."
+                )
+
+                if screenshot_to_send:
+                    notify_with_photo(error_text, screenshot_to_send)
+                else:
+                    notify(error_text)
+
+        except Exception as e:
+            print("Белград: ошибка (" + str(applicants_count) + " заяв.): " + str(e))
