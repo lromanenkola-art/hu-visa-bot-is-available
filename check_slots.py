@@ -309,6 +309,22 @@ def run():
         page.wait_for_timeout(2000)
         safe_screenshot(page, "step1_initial.png")
 
+        # Проверяем самую частую причину "тихих" сбоев - сайт банит
+        # IP-адрес раннера GitHub Actions (общий пул Azure). Если это
+        # произошло, дальше идти бессмысленно - сразу сообщаем об этом
+        # явно, вместо общей "технической накладки".
+        try:
+            initial_text = page.locator("body").inner_text().lower()
+            if "letiltásra került" in initial_text or "ip cím" in initial_text:
+                print(
+                    "IP-адрес раннера заблокирован сайтом (letiltásra került) - "
+                    "дальше идти бессмысленно"
+                )
+                browser.close()
+                return "ip_blocked"
+        except Exception as e:
+            print("Не удалось проверить страницу на бан IP: " + str(e))
+
         try:
             dismiss_cookie_banner(page)
             safe_screenshot(page, "step1b_after_cookies.png")
@@ -543,10 +559,8 @@ if __name__ == "__main__":
     try:
         result = run()
 
-        # Если первая попытка закончилась неопределённым исходом -
-        # пробуем ещё раз перед тем, как беспокоить пользователя.
-        # Это убирает большинство случайных единичных сбоев (медленная
-        # загрузка страницы, разовый глюк клика и т.п.)
+        # Retry не имеет смысла, если сайт забанил IP раннера - в рамках
+        # одного job IP не меняется, повтор просто потратит время впустую
         if result is None:
             print("Первая попытка не удалась - пробую ещё раз перед отправкой ошибки")
             result = run()
@@ -558,6 +572,14 @@ if __name__ == "__main__":
             )
         elif result is False:
             print("Слотов нет - уведомление не отправляется")
+        elif result == "ip_blocked":
+            print("IP раннера заблокирован сайтом")
+            notify(
+                "🚫 Суботица: сайт заблокировал IP-адрес GitHub-раннера "
+                "(letiltásra került). Это не баг в коде - сайт банит "
+                "датацентровые IP Azure. Возможно, стоит проверить вручную "
+                "или настроить прокси."
+            )
         else:
             print("Не удалось проверить (ошибка/незавершённая форма) даже со второй попытки")
 
